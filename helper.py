@@ -48,6 +48,9 @@ def setHeaders(type):
     return headers
 
 def setAllYNABDatabases():
+    if not os.path.exists('databases'):
+        os.makedirs('databases')
+
     response = requests.get(YNAB_BASE_URL + "budgets/" + getEnvs()["budget"], headers = setHeaders("ynab"))
 
     if response.status_code == 200:
