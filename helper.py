@@ -41,7 +41,8 @@ def setDatabase(shelf, payload):
 
 def setHeaders(type):
     headers = {
-        "Authorization" : "Bearer " + getEnvs()[type]
+        "Authorization" : "Bearer " + getEnvs()[type],
+        "Content-Type" : "application/json"
     }
     return headers
 
@@ -76,12 +77,11 @@ def createUpWebhook():
         "data" : {
             "attributes" : {
                 "url" : getEnvs()["heroku"] + "up_webhook",
-                "description" : "An automatically created webhook to transfer data from Up into YNAB"
+                "description" : "An automatic webhook to transfer data from Up into YNAB"
             }
         }
     }
-    response = requests.post(UP_BASE_URL + "webhooks/", data=str(body), headers=setHeaders("up"))
-
+    response = requests.post(UP_BASE_URL + "webhooks/", data=json.dumps(body), headers=setHeaders("up"))
 
     try:
         response.raise_for_status()
