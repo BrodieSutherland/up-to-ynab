@@ -87,4 +87,4 @@ def createUpWebhook():
         response.raise_for_status()
         print("Webhook created Successfully")
     except requests.exceptions.HTTPError as http_err:
-        print("An HTTP Error has occurred.\nStatus Code: " + http_err.response.status_code + "\nError: " + http_err.response.reason)
+        print("An HTTP Error has occurred.\nStatus Code: " + str(http_err.response.status_code) + "\nError: " + http_err.response.reason)
