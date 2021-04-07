@@ -2,6 +2,7 @@ from flask import Flask, request, Response
 import classes
 import helper
 import os
+from run import app as application
 
 app = Flask(__name__)
 
@@ -15,4 +16,5 @@ def respond():
 if(__name__ == "__main__"):
     helper.setAllYNABDatabases()
     # helper.createUpWebhook()
-    app.run(port=os.environ.get("PORT"))
+    port = os.environ.get('PORT')
+    application.run(host='0.0.0.0', port=os.environ.get("PORT"))
