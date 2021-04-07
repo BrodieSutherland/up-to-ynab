@@ -17,14 +17,11 @@ def handleWebhookEvent(event):
 def getEnvs():
     try:
         envVars = {
-            # "up" : os.environ.get("upKey"),
-            # "ynab" : os.environ.get("ynabKey"),
-            # "budget" : os.environ.get("budgetId")
+            "up" : os.environ.get("upKey"),
+            "ynab" : os.environ.get("ynabKey"),
+            "budget" : os.environ.get("budgetId")
         }
-
-        envVars["up"] = "up:yeah:2xxgep1iQ68y5cPEO83CUELIzYBdutebGLHnI5iPJSKdcOYlnTuyHQYY0wLxA4fpe9EBH3wbWZkWWlD6z52qpDORCGSfySbQNZogx7n7FstOZH4Ggh4EsF6efolb4fb2"
-        envVars["ynab"] = "a7ff8750605bd1a5169078221cc0ff705628c639ed29a9cb9902501aba428114"
-        envVars["budget"] = "0c8b0481-c89d-4ff9-8213-622798992665"
+        
     except:
         print("cant find heroku vars, you better check this shit")
 
