@@ -14,5 +14,5 @@ def respond():
 
 if(__name__ == "__main__"):
     helper.setAllYNABDatabases()
-    helper.createUpWebhook()
+    # helper.createUpWebhook()
     app.run(port=os.environ.get("PORT"))
