@@ -19,7 +19,8 @@ def getEnvs():
         envVars = {
             "up" : os.environ.get("upKey"),
             "ynab" : os.environ.get("ynabKey"),
-            "budget" : os.environ.get("budgetId")
+            "budget" : os.environ.get("budgetId"),
+            "heroku" : os.environ.get("HEROKU_BASE_URL")
         }
         
     except:
