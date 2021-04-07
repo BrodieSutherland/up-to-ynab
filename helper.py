@@ -80,7 +80,7 @@ def createUpWebhook():
             }
         }
     }
-    response = requests.post(UP_BASE_URL + "webhooks/", data=body, headers=setHeaders("up"))
+    response = requests.post(UP_BASE_URL + "webhooks/", data=str(body), headers=setHeaders("up"))
 
 
     try:
