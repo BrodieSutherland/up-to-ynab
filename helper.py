@@ -75,7 +75,7 @@ def createUpWebhook():
     body = {
         "data" : {
             "attributes" : {
-                "url" : getEnvs()["heroku"] + "/up_webhook",
+                "url" : getEnvs()["heroku"] + "up_webhook",
                 "description" : "An automatically created webhook to transfer data from Up into YNAB"
             }
         }
