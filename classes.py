@@ -21,7 +21,7 @@ class UpWebhookEvent:
         self.type = payload["attributes"]["eventType"]
         self.date = payload["attributes"]["createdAt"]
         try:
-            self.transactionId = payload["relationships"]["transaction"]["data"]["id"]
+            self.transactionId = payload["relationships"]["data"]["id"]
         except:
             print("Not a transaction?")
 
@@ -29,6 +29,22 @@ class UpWebhookEvent:
         response = requests.get(helper.YNAB_BASE_URL + "transactions/" + self.transactionId, headers = helper.setHeaders("up"))
 
         if response.status_code == 200:
-            return UpTransaction(response.json["data"])
+            self.transaction = UpTransaction(response.json["data"])
         else:
             raise RuntimeError("Couldn't retrieve Up Transaction. Code: " + str(response.status_code) + "\nError: " + response.reason)
+
+class YNABTransaction:
+    def __init__(self, payload=None, transaction=None):
+        if(payload != None):
+            self.accountId = payload["account_id"]
+            self.date = payload["date"]
+            self.amount = payload["amount"]
+            self.payeeId = payload["payee_id"]
+            self.payeeName = payload["payee_name"]
+            self.memo = payload["memo"]
+        elif(transaction != None):
+            self.accountId = transaction.accountId
+            self.date = transaction.settleDate
+            self.amount = transaction.value
+            self.payeeName = transaction.payee
+            self.memo = transaction.message

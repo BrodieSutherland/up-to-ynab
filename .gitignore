@@ -1,4 +1,4 @@
-jsonDictionaries/*
-unsorted/
+databases/*
+.vscode/*
 
 __pycache__/
