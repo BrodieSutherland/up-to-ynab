@@ -11,8 +11,8 @@ UP_BASE_URL = "https://api.up.com.au/api/v1/"
 
 def handleWebhookEvent(event):
     if(event.type == "TRANSACTION_SETTLED"):
-        event.getTransaction
-        print(event.transaction.value + " paid to " + event.transaction.payee + " at " + event.transaction.settleDate)
+        event.getTransaction()
+        return str(event.transaction.value) + " paid to " + str(event.transaction.payee) + " at " + str(event.transaction.settleDate)
 
 def getEnvs():
     try:
