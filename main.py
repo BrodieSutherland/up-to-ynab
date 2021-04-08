@@ -10,11 +10,13 @@ def respond():
     eventPayload = classes.UpWebhookEvent(request.json["data"])
     test = helper.handleWebhookEvent(eventPayload)
 
-    body = {
-        "data" : test
-    }
+    # body = {
+    #     "data" : test
+    # }
 
-    return body
+    print(test)
+
+    return Response(status=200)
 
 if(__name__ == "__main__"):
     helper.setAllYNABDatabases()
