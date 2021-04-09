@@ -4,6 +4,7 @@ import helper
 # UP API CLASSES
 class UpTransaction:
     def __init__(self, payload):
+        print(payload)
         self.id = payload["id"]
         attributes = payload["attributes"]
         self.status = attributes["status"]
