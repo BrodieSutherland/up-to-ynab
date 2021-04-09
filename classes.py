@@ -15,7 +15,8 @@ class UpTransaction:
         self.accountId = payload["relationships"]["account"]["data"]["id"]
         if payload["relationships"]["transferAccount"]["data"]:
             self.transferAccountId = payload["relationships"]["transferAccount"]["data"]["id"]
-        self.category = payload["relationships"]["category"]["data"]["id"]
+        if payload["relationships"]["category"]["data"]:
+            self.category = payload["relationships"]["category"]["data"]["id"]
 
 class UpWebhookEvent:
     def __init__(self, payload):
