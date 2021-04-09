@@ -7,6 +7,7 @@ app = Flask(__name__)
 
 @app.route('/up_webhook', methods=['POST'])
 def respond():
+    print(request.json["data"])
     eventPayload = classes.UpWebhookEvent(request.json["data"])
     test = helper.handleWebhookEvent(eventPayload)
 
