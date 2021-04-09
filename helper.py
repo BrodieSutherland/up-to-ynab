@@ -10,12 +10,10 @@ YNAB_BASE_URL = "https://api.youneedabudget.com/v1/"
 UP_BASE_URL = "https://api.up.com.au/api/v1/"
 
 def handleWebhookEvent(event):
-    if(event.type == "TRANSACTION_SETTLED"):
+    if(event.type == "TRANSACTION_CREATED"):
         event.getTransaction()
 
-        print(event)
-
-        return str(event.transaction.value) + " paid to " + str(event.transaction.payee) + " at " + str(event.transaction.settleDate)
+        return str(event.transaction.value) + " paid to " + str(event.transaction.payee) + " at " + str(event.transaction.date)
 
 def getEnvs():
     try:

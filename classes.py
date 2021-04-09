@@ -10,7 +10,7 @@ class UpTransaction:
         self.payee = attributes["description"]
         self.message = attributes["message"]
         self.value = attributes["amount"]["value"]
-        self.settleDate = attributes["settledAt"]
+        self.date = attributes["createdAt"]
         self.accountId = payload["relationships"]["account"]["data"]["id"]
         if payload["relationships"]["transferAccount"]["data"]:
             self.transferAccountId = payload["relationships"]["transferAccount"]["data"]["id"]
@@ -34,6 +34,9 @@ class UpWebhookEvent:
         else:
             raise RuntimeError("Couldn't retrieve Up Transaction. Code: " + str(response.status_code) + "\nError: " + response.reason)
 
+    def convertTransaction(self):
+        pass
+
 class YNABTransaction:
     def __init__(self, payload=None, transaction=None):
         if(payload != None):
@@ -45,7 +48,7 @@ class YNABTransaction:
             self.memo = payload["memo"]
         elif(transaction != None):
             self.accountId = transaction.accountId
-            self.date = transaction.settleDate
+            self.date = transaction.date
             self.amount = transaction.value
             self.payeeName = transaction.payee
             self.memo = transaction.message
