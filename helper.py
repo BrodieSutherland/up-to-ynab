@@ -65,14 +65,11 @@ def setAllYNABDatabases():
     payees = shelve.open("databases/payees__id")
 
     for i in response.json()["data"]["budget"]["transactions"]:
-        # print(i)
         try:
-            print(cats[i["category_id"]])
             if i["category_id"]:
                 try:
                     payeeToCat[payees[i["payee_id"]]] = payeeToCat[payees[i["payee_id"]]].add(cats[i["category_id"]])
                 except Exception:
-                    print(cats[i["category_id"]])
                     payeeToCat[payees[i["payee_id"]]] = set([cats[i["category_id"]]])
         except Exception:
             print("Split Transaction?")
@@ -129,11 +126,9 @@ def sendNewYNABTransaction(transactionObject):
     try:
         categories = list(payeeToCat[transactionObject.payeeName])
     except Exception:
-        print("new payee")
+        pass
 
     payeeToCat.close()
-
-    print(categories)
 
     body = {
         "transaction" : {
@@ -146,7 +141,6 @@ def sendNewYNABTransaction(transactionObject):
         }
     }
 
-    print(body)
     response = requests.post(YNAB_BASE_URL + "budgets/" + getEnvs("budgetId") + "/transactions", data=json.dumps(body), headers=setHeaders("ynab"))
 
     try:

@@ -5,7 +5,6 @@ import shelve
 # UP API CLASSES
 class UpTransaction:
     def __init__(self, payload):
-        print(payload)
         self.id = payload["id"]
         attributes = payload["attributes"]
         self.status = attributes["status"]
@@ -60,7 +59,7 @@ class YNABTransaction:
             
             upAcc.close()
             ynabAcc.close()
-            
+
             self.date = transaction.date
             self.amount = transaction.value
             self.payeeName = transaction.payee
@@ -70,5 +69,5 @@ class YNABTransaction:
             try:
                 self.payeeId = payeeNames[self.payeeName]
             except Exception:
-                print("new payee")
+                print("Unrecognised Payee: " + self.payeeName)
             payeeNames.close()
