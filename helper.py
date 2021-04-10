@@ -138,7 +138,7 @@ def sendNewYNABTransaction(transactionObject):
     body = {
         "transaction" : {
             "account_id" : transactionObject.accountId,
-            "date" : transactionObject.date,
+            "date" : transactionObject.date[0 : 10],
             "amount" : int(float(transactionObject.amount) * 1000),
             "payee_name" : transactionObject.payeeName,
             "category_name" : categories[0] if len(categories) == 1 else "Uncategorized",
@@ -147,7 +147,7 @@ def sendNewYNABTransaction(transactionObject):
     }
 
     print(body)
-    response = requests.post(YNAB_BASE_URL + "budgets/" + getEnvs("budgetId") + "/transactions", data=body, headers=setHeaders("ynab"))
+    response = requests.post(YNAB_BASE_URL + "budgets/" + getEnvs("budgetId") + "/transactions", data=json.dumps(body), headers=setHeaders("ynab"))
 
     try:
         response.raise_for_status()
