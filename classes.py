@@ -1,5 +1,6 @@
 import requests
 import helper
+import shelve
 
 # UP API CLASSES
 class UpTransaction:
@@ -37,7 +38,10 @@ class UpWebhookEvent:
             raise RuntimeError("Couldn't retrieve Up Transaction. Code: " + str(response.status_code) + "\nError: " + response.reason)
 
     def convertTransaction(self):
-        pass
+        if self.transaction:
+            self.ynabTransaction = YNABTransaction(transaction=self.transaction)
+        else:
+            print("There is currently no transaction against this Event")
 
 class YNABTransaction:
     def __init__(self, payload=None, transaction=None):
@@ -49,8 +53,22 @@ class YNABTransaction:
             self.payeeName = payload["payee_name"]
             self.memo = payload["memo"]
         elif(transaction != None):
-            self.accountId = transaction.accountId
+            upAcc = shelve.open("databases/up_accounts")
+            ynabAcc = shelve.open("databases/accounts__name")
+
+            self.accountId = ynabAcc[upAcc[transaction.accountId]]
+            
+            upAcc.close()
+            ynabAcc.close()
+            
             self.date = transaction.date
             self.amount = transaction.value
             self.payeeName = transaction.payee
             self.memo = transaction.message
+
+            payeeNames = shelve.open("databases/payees__name")
+            try:
+                self.payeeId = payeeNames[self.payeeName]
+            except Exception:
+                print("new payee")
+            payeeNames.close()

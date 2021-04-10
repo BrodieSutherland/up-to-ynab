@@ -12,22 +12,16 @@ UP_BASE_URL = "https://api.up.com.au/api/v1/"
 def handleWebhookEvent(event):
     if(event.type == "TRANSACTION_CREATED"):
         event.getTransaction()
+        event.convertTransaction()
+        sendNewYNABTransaction(event.ynabTransaction)
 
         return str(event.transaction.value) + " paid to " + str(event.transaction.payee) + " at " + str(event.transaction.date)
 
-def getEnvs():
-    try:
-        envVars = {
-            "up" : os.environ.get("upKey"),
-            "ynab" : os.environ.get("ynabKey"),
-            "budget" : os.environ.get("budgetId"),
-            "heroku" : os.environ.get("HEROKU_BASE_URL")
-        }
-        
-    except:
-        print("cant find heroku vars, you better check this shit")
-
-    return envVars
+def getEnvs(var):
+    if os.environ.get(var):
+        return os.environ.get(var)
+    else:
+        print("Couldn't find this variable")
 
 def setDatabase(shelf, payload):
     idDatabase = shelve.open("databases/" + shelf + "__id")
@@ -35,14 +29,19 @@ def setDatabase(shelf, payload):
 
     for i in payload:
         idDatabase[i["id"]] = i["name"]
-        idDatabase[i["name"]] = i["id"]
+        nameDatabase[i["name"]] = i["id"]
     
     idDatabase.close()
     nameDatabase.close()
 
 def setHeaders(type):
+    switch = {
+        "up" : "upKey",
+        "ynab" : "ynabKey"
+    }
+
     headers = {
-        "Authorization" : "Bearer " + getEnvs()[type],
+        "Authorization" : "Bearer " + getEnvs(switch[type]),
         "Content-Type" : "application/json"
     }
     return headers
@@ -51,7 +50,7 @@ def setAllYNABDatabases():
     if not os.path.exists('databases'):
         os.makedirs('databases')
 
-    response = requests.get(YNAB_BASE_URL + "budgets/" + getEnvs()["budget"], headers = setHeaders("ynab"))
+    response = requests.get(YNAB_BASE_URL + "budgets/" + getEnvs("budgetId"), headers = setHeaders("ynab"))
 
     if response.status_code == 200:
         payload = response.json()["data"]["budget"]
@@ -61,8 +60,43 @@ def setAllYNABDatabases():
     else:
         raise RuntimeError("Couldn't access the YNAB API. Code: " + str(response.status_code) + "\nError: " + response.reason)
 
+    payeeToCat = shelve.open("databases/payeeToCategories")
+    cats = shelve.open("databases/categories__id")
+    payees = shelve.open("databases/payees__id")
+
+    for i in response.json()["data"]["budget"]["transactions"]:
+        # print(i)
+        try:
+            print(cats[i["category_id"]])
+            if i["category_id"]:
+                try:
+                    payeeToCat[payees[i["payee_id"]]] = payeeToCat[payees[i["payee_id"]]].add(cats[i["category_id"]])
+                except Exception:
+                    print(cats[i["category_id"]])
+                    payeeToCat[payees[i["payee_id"]]] = set([cats[i["category_id"]]])
+        except Exception:
+            print("Split Transaction?")
+
+    payeeToCat.close()
+    cats.close()
+    payees.close()
+
+    response = requests.get(UP_BASE_URL + "accounts/", headers = setHeaders("up"))
+
+    if response.status_code == 200:
+        payload = response.json()["data"]
+
+        upAccounts = shelve.open("databases/up_accounts")
+
+        for i in payload:
+            upAccounts[i["id"]] = i["attributes"]["displayName"]
+
+        upAccounts.close()
+    else:
+        raise RuntimeError("Couldn't access the YNAB API. Code: " + str(response.status_code) + "\nError: " + response.reason)
+
 def createYNABTransaction(upTransaction):
-    newYNABTransaction = classes.YNABTransaction(transaction=upTransaction)
+    newYNABTransaction = classes.YNABTransaction(payload=upTransaction)
     payeeNameShelf = shelve.open("databases/payees__name")
     newYNABTransaction.payeeId = payeeNameShelf[newYNABTransaction.payeeName]
     payeeNameShelf.close()
@@ -70,14 +104,11 @@ def createYNABTransaction(upTransaction):
 
     return newYNABTransaction
 
-def getPayeeId(payeeName):
-    pass
-
 def createUpWebhook():
     body = {
         "data" : {
             "attributes" : {
-                "url" : getEnvs()["heroku"] + "up_webhook",
+                "url" : getEnvs("HEROKU_BASE_URL") + "up_webhook",
                 "description" : "An automatic webhook to transfer data from Up into YNAB"
             }
         }
@@ -87,5 +118,39 @@ def createUpWebhook():
     try:
         response.raise_for_status()
         print("Webhook created Successfully")
+    except requests.exceptions.HTTPError as http_err:
+        print("An HTTP Error has occurred.\nStatus Code: " + str(http_err.response.status_code) + "\nError: " + http_err.response.reason)
+
+def sendNewYNABTransaction(transactionObject):
+    payeeToCat = shelve.open("databases/payeeToCategories")
+
+    categories = []
+
+    try:
+        categories = list(payeeToCat[transactionObject.payeeName])
+    except Exception:
+        print("new payee")
+
+    payeeToCat.close()
+
+    print(categories)
+
+    body = {
+        "transaction" : {
+            "account_id" : transactionObject.accountId,
+            "date" : transactionObject.date,
+            "amount" : int(float(transactionObject.amount) * 1000),
+            "payee_name" : transactionObject.payeeName,
+            "category_name" : categories[0] if len(categories) == 1 else "Uncategorized",
+            "memo" : transactionObject.memo if transactionObject.memo != None else ""
+        }
+    }
+
+    print(body)
+    response = requests.post(YNAB_BASE_URL + "budgets/" + getEnvs("budgetId") + "/transactions", data=body, headers=setHeaders("ynab"))
+
+    try:
+        response.raise_for_status()
+        print("Transaction created successfully")
     except requests.exceptions.HTTPError as http_err:
         print("An HTTP Error has occurred.\nStatus Code: " + str(http_err.response.status_code) + "\nError: " + http_err.response.reason)
