@@ -160,7 +160,7 @@ class YNABBudget(YNABBase):
             try:
                 payeeToCategories[transaction.payeeName].add(categories[transaction.categoryId])
             except:
-                if "Transfer :" not in transaction.payeeName and transaction.categoryId != None:
+                if "Transfer :" or "Transfer from" not in transaction.payeeName and transaction.categoryId != None:
                     payeeToCategories[transaction.payeeName] = set([categories[transaction.categoryId]])
 
         categories.close()
