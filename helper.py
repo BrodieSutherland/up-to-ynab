@@ -23,16 +23,37 @@ def getEnvs(var):
     else:
         print("Couldn't find this variable")
 
-def setDatabase(shelf, payload):
-    idDatabase = shelve.open("databases/" + shelf + "__id")
-    nameDatabase = shelve.open("databases/" + shelf + "__name")
+def setDatabase(shelf, objectList, key):
+    shelfDatabase = shelve.open("databases/" + shelf + "__" + key)
 
-    for i in payload:
-        idDatabase[i["id"]] = i["name"]
-        nameDatabase[i["name"]] = i["id"]
+    for i in objectList:
+        try:
+            shelfDatabase[getattr(i, key)] = i
+        except Exception:
+            pass
     
-    idDatabase.close()
-    nameDatabase.close()
+    shelfDatabase.close()
+
+def setUpAccountDatabases():
+    response = requests.get(UP_BASE_URL + "accounts/", headers = setHeaders("up"))
+
+    if response.status_code == 200:
+        payload = response.json()["data"]
+
+        upAccounts = shelve.open("databases/up_accounts")
+        ynabAccounts = shelve.open("databases/accounts__name")
+
+        for i in payload:
+            account = classes.UpAccount(i)
+            if account.type == "TRANSACTIONAL":
+                global TRANSACTIONAL_ACCOUNT_ID
+                TRANSACTIONAL_ACCOUNT_ID = ynabAccounts[account.name].transferId
+            upAccounts[account.id] = account.name
+
+        ynabAccounts.close()
+        upAccounts.close()
+    else:
+        raise RuntimeError("Couldn't access the Up API. Code: " + str(response.status_code) + "\nError: " + response.reason)
 
 def setHeaders(type):
     switch = {
@@ -53,52 +74,18 @@ def setAllYNABDatabases():
     response = requests.get(YNAB_BASE_URL + "budgets/" + getEnvs("budgetId"), headers = setHeaders("ynab"))
 
     if response.status_code == 200:
-        payload = response.json()["data"]["budget"]
-
-        for base in YNAB_DATABASES:
-            setDatabase(base, payload[base])
+        budget = classes.YNABBudget(response.json()["data"]["budget"])
     else:
         raise RuntimeError("Couldn't access the YNAB API. Code: " + str(response.status_code) + "\nError: " + response.reason)
 
-    payeeToCat = shelve.open("databases/payeeToCategories")
-    cats = shelve.open("databases/categories__id")
-    payees = shelve.open("databases/payees__id")
-
-    for i in response.json()["data"]["budget"]["transactions"]:
-        try:
-            if i["category_id"]:
-                try:
-                    payeeToCat[payees[i["payee_id"]]] = payeeToCat[payees[i["payee_id"]]].add(cats[i["category_id"]])
-                except Exception:
-                    payeeToCat[payees[i["payee_id"]]] = set([cats[i["category_id"]]])
-        except Exception:
-            print("Split Transaction?")
-
-    payeeToCat.close()
-    cats.close()
-    payees.close()
-
-    response = requests.get(UP_BASE_URL + "accounts/", headers = setHeaders("up"))
-
-    if response.status_code == 200:
-        payload = response.json()["data"]
-
-        upAccounts = shelve.open("databases/up_accounts")
-
-        for i in payload:
-            upAccounts[i["id"]] = i["attributes"]["displayName"]
-
-        upAccounts.close()
-    else:
-        raise RuntimeError("Couldn't access the YNAB API. Code: " + str(response.status_code) + "\nError: " + response.reason)
+    budget.setAccountDatabase()
+    budget.setCategoryDatabase()
+    budget.setCategoryGroupDatabase()
+    budget.setPayeeDatabase()
+    setUpAccountDatabases()
 
 def createYNABTransaction(upTransaction):
-    newYNABTransaction = classes.YNABTransaction(payload=upTransaction)
-    payeeNameShelf = shelve.open("databases/payees__name")
-    newYNABTransaction.payeeId = payeeNameShelf[newYNABTransaction.payeeName]
-    payeeNameShelf.close()
-
-
+    newYNABTransaction = classes.YNABTransaction(jsonPayload=upTransaction)
     return newYNABTransaction
 
 def createUpWebhook():
@@ -119,24 +106,14 @@ def createUpWebhook():
         print("An HTTP Error has occurred.\nStatus Code: " + str(http_err.response.status_code) + "\nError: " + http_err.response.reason)
 
 def sendNewYNABTransaction(transactionObject):
-    payeeToCat = shelve.open("databases/payeeToCategories")
-
-    categories = []
-
-    try:
-        categories = list(payeeToCat[transactionObject.payeeName])
-    except Exception:
-        pass
-
-    payeeToCat.close()
-
     body = {
         "transaction" : {
             "account_id" : transactionObject.accountId,
-            "date" : transactionObject.date[0 : 10],
-            "amount" : int(float(transactionObject.amount) * 1000),
-            "payee_name" : transactionObject.payeeName,
-            "category_name" : categories[0] if len(categories) == 1 else "Uncategorized",
+            "date" : transactionObject.date,
+            "amount" : transactionObject.amount,
+            "payee_name" : transactionObject.payeeName if transactionObject.payeeName != None else "",
+            "payee_id" : TRANSACTIONAL_ACCOUNT_ID if transactionObject.payeeName == None else "",
+            "category_name" : transactionObject.categories[0] if len(transactionObject.categories) == 1 else "Uncategorized",
             "memo" : transactionObject.memo if transactionObject.memo != None else ""
         }
     }

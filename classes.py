@@ -10,13 +10,24 @@ class UpTransaction:
         self.status = attributes["status"]
         self.payee = attributes["description"]
         self.message = attributes["message"]
-        self.value = attributes["amount"]["value"]
+        self.value = float(attributes["amount"]["value"])
         self.date = attributes["createdAt"]
         self.accountId = payload["relationships"]["account"]["data"]["id"]
+
+        accounts = shelve.open("databases/up_accounts")
+        self.accountName = accounts[self.accountId]
+        accounts.close()
+
         if payload["relationships"]["transferAccount"]["data"]:
             self.transferAccountId = payload["relationships"]["transferAccount"]["data"]["id"]
         if payload["relationships"]["category"]["data"]:
             self.category = payload["relationships"]["category"]["data"]["id"]
+
+class UpAccount:
+    def __init__(self, payload):
+        self.id = payload["id"]
+        self.name = payload["attributes"]["displayName"]
+        self.type = payload["attributes"]["accountType"]
 
 class UpWebhookEvent:
     def __init__(self, payload):
@@ -38,36 +49,127 @@ class UpWebhookEvent:
 
     def convertTransaction(self):
         if self.transaction:
-            self.ynabTransaction = YNABTransaction(transaction=self.transaction)
+            self.ynabTransaction = YNABTransaction(upTransaction=self.transaction)
         else:
             print("There is currently no transaction against this Event")
 
-class YNABTransaction:
-    def __init__(self, payload=None, transaction=None):
-        if(payload != None):
-            self.accountId = payload["account_id"]
-            self.date = payload["date"]
-            self.amount = payload["amount"]
-            self.payeeId = payload["payee_id"]
-            self.payeeName = payload["payee_name"]
-            self.memo = payload["memo"]
-        elif(transaction != None):
-            upAcc = shelve.open("databases/up_accounts")
+# YNAB API CLASSES
+class YNABBase:
+    def __init__(self, payload):
+        self.id = payload["id"]
+        self.name = payload["name"]
+
+class YNABTransaction(YNABBase):
+    def __init__(self, jsonPayload=None, upTransaction=None):
+        if(jsonPayload != None):
+            self.accountId = jsonPayload["account_id"]
+            self.date = jsonPayload["date"][0 : 10]
+            self.amount = int(float(jsonPayload["amount"]))
+            self.amount = self.amount * 1000
+            self.payeeId = jsonPayload["payee_id"]
+            self.categoryId = jsonPayload["category_id"]
+            try:
+                self.payeeName = jsonPayload["payee_name"]
+            except:
+                pass
+            self.memo = jsonPayload["memo"]
+
+        elif(upTransaction != None):
             ynabAcc = shelve.open("databases/accounts__name")
 
-            self.accountId = ynabAcc[upAcc[transaction.accountId]]
+            self.accountId = ynabAcc[upTransaction.accountName].id
             
-            upAcc.close()
             ynabAcc.close()
 
-            self.date = transaction.date
-            self.amount = transaction.value
-            self.payeeName = transaction.payee
-            self.memo = transaction.message
+            self.date = upTransaction.date[0 : 10]
+            self.amount = int(upTransaction.value * 1000)
+            if upTransaction.payee != "Round Up":
+                self.payeeName = upTransaction.payee
+            else:
+                self.payeeName = None
+            self.memo = upTransaction.message
 
-            payeeNames = shelve.open("databases/payees__name")
+            payeeToCat = shelve.open("databases/payeeToCategories")
+
             try:
-                self.payeeId = payeeNames[self.payeeName]
-            except Exception:
-                print("Unrecognised Payee: " + self.payeeName)
-            payeeNames.close()
+                self.categories = list(payeeToCat[self.payeeName])
+            except:
+                self.categories = []
+
+            payeeToCat.close()
+
+    def setPayeeName(self):
+        database = shelve.open("databases/payees__id")
+        self.payeeName = database[self.payeeId].name
+        database.close()
+
+class YNABAccount(YNABBase):
+    def __init__(self, payload):
+        YNABBase.__init__(self, payload)
+        self.transferId = payload["transfer_payee_id"]
+
+class YNABPayee(YNABBase):
+    def __init__(self, payload):
+        YNABBase.__init__(self, payload)
+
+class YNABCategory(YNABBase):
+    def __init__(self, payload):
+        YNABBase.__init__(self, payload)
+
+class YNABCategoryGroup(YNABBase):
+    def __init__(self, payload):
+        YNABBase.__init__(self, payload)
+
+class YNABBudget(YNABBase):
+    def __init__(self, payload):
+        YNABBase.__init__(self, payload)
+
+        self.accounts = []
+        for acc in payload["accounts"]:
+            self.accounts.append(YNABAccount(acc))
+        
+        self.categories = []
+        for cat in payload["categories"]:
+            self.categories.append(YNABCategory(cat))
+        
+        self.categoryGroups = []
+        for catGroup in payload["category_groups"]:
+            self.categoryGroups.append(YNABCategoryGroup(catGroup))
+        
+        self.payees = []
+        for pay in payload["payees"]:
+            self.payees.append(YNABPayee(pay))
+
+        self.transactions = []
+        for transaction in payload["transactions"]:
+            self.transactions.append(YNABTransaction(jsonPayload=transaction))
+
+    def setAccountDatabase(self):
+        helper.setDatabase("accounts", self.accounts, "id")
+        helper.setDatabase("accounts", self.accounts, "name")
+
+    def setPayeeDatabase(self):
+        helper.setDatabase("payees", self.payees, "id")
+        helper.setDatabase("payees", self.payees, "name")
+
+        payeeToCategories = shelve.open("databases/payeeToCategories")
+        categories = shelve.open("databases/categories__id")
+
+        for transaction in self.transactions:
+            transaction.setPayeeName()
+            try:
+                payeeToCategories[transaction.payeeName].add(categories[transaction.categoryId])
+            except:
+                if "Transfer :" not in transaction.payeeName and transaction.categoryId != None:
+                    payeeToCategories[transaction.payeeName] = set([categories[transaction.categoryId]])
+
+        categories.close()
+        payeeToCategories.close()
+
+    def setCategoryGroupDatabase(self):
+        helper.setDatabase("category_groups", self.categoryGroups, "id")
+        helper.setDatabase("category_groups", self.categoryGroups, "name")
+
+    def setCategoryDatabase(self):
+        helper.setDatabase("category", self.categories, "id")
+        helper.setDatabase("category", self.categories, "name")
