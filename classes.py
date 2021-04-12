@@ -164,7 +164,7 @@ class YNABBudget(YNABBase):
                     try:
                         catSet = set([categories[transaction.categoryId]])
                     except Exception:
-                        response = requests.get(helper.YNAB_BASE_URL + "budgets/" + helper.getEnvs("budgetId") + "/categories/" + transaction.categoryId, headers=helper.setHeaders("ynab"))["data"]["category"]
+                        response = requests.get(helper.YNAB_BASE_URL + "budgets/" + helper.getEnvs("budgetId") + "/categories/" + transaction.categoryId, headers=helper.setHeaders("ynab")).json()["data"]["category"]
                         self.categories.append(YNABCategory(response))
 
                         categories[transaction.categoryId] = YNABCategory(response)
