@@ -161,7 +161,16 @@ class YNABBudget(YNABBase):
                 payeeToCategories[transaction.payeeName].add(categories[transaction.categoryId])
             except:
                 if "Transfer :" not in transaction.payeeName and "Transfer from" not in transaction.payeeName and transaction.categoryId != None:
-                    payeeToCategories[transaction.payeeName] = set([categories[transaction.categoryId]])
+                    try:
+                        catSet = set([categories[transaction.categoryId]])
+                    except Exception:
+                        response = requests.get(helper.YNAB_BASE_URL + "budgets/" + helper.getEnvs("budgetId") + "/categories/" + transaction.categoryId, headers=helper.setHeaders("ynab"))["data"]["category"]
+                        self.categories.append(YNABCategory(response))
+
+                        categories[transaction.categoryId] = YNABCategory(response)
+
+                        catSet = set(YNABCategory(response))
+                        payeeToCategories[transaction.payeeName] = catSet
 
         categories.close()
         payeeToCategories.close()
