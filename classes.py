@@ -169,7 +169,7 @@ class YNABBudget(YNABBase):
 
                         categories[transaction.categoryId] = YNABCategory(response)
 
-                        catSet = set(YNABCategory(response))
+                        catSet = set([YNABCategory(response)])
                         payeeToCategories[transaction.payeeName] = catSet
 
         categories.close()
