@@ -68,10 +68,17 @@ class YNABTransaction(YNABBase):
             self.amount = self.amount * 1000
             self.payeeId = jsonPayload["payee_id"]
             self.categoryId = jsonPayload["category_id"]
+
+            payees = shelve.open("databases/payee__name")
+
             try:
                 self.payeeName = jsonPayload["payee_name"]
+                self.payeeId = payees[self.payeeName].id
             except:
                 pass
+
+            payees.close()
+
             self.memo = jsonPayload["memo"]
 
         elif(upTransaction != None):
@@ -85,8 +92,19 @@ class YNABTransaction(YNABBase):
             self.amount = int(upTransaction.value * 1000)
             if upTransaction.payee != "Round Up":
                 self.payeeName = upTransaction.payee
+
+                payees = shelve.open("databases/payees__name")
+
+                try:
+                    self.payeeId = payees[upTransaction.payee].id
+                except:
+                    pass
+
+                payees.close()
+
             else:
                 self.payeeName = None
+                self.payeeId = helper.TRANSACTIONAL_ACCOUNT_ID
             self.memo = upTransaction.message
 
             payeeToCat = shelve.open("databases/payeeToCategories")

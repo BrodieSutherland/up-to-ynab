@@ -112,7 +112,7 @@ def sendNewYNABTransaction(transactionObject):
             "date" : transactionObject.date,
             "amount" : transactionObject.amount,
             "payee_name" : transactionObject.payeeName if transactionObject.payeeName != None else "",
-            "payee_id" : TRANSACTIONAL_ACCOUNT_ID if transactionObject.payeeName == None else "",
+            "payee_id" : transactionObject.payeeId,
             "category_name" : transactionObject.categories[0] if len(transactionObject.categories) == 1 else "Uncategorized",
             "memo" : transactionObject.memo if transactionObject.memo != None else ""
         }
