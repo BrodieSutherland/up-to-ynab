@@ -114,8 +114,6 @@ class YNABTransaction(YNABBase):
             }
         }
 
-        print(body)
-
         response = requests.post(helper.YNAB_BASE_URL + "budgets/" + helper.getEnvs("budgetId") + "/transactions", data=json.dumps(body), headers=helper.setHeaders("ynab"))
 
         try:
