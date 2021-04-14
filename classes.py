@@ -135,10 +135,6 @@ class YNABCategory(YNABBase):
     def __init__(self, payload):
         YNABBase.__init__(self, payload)
 
-class YNABCategoryGroup(YNABBase):
-    def __init__(self, payload):
-        YNABBase.__init__(self, payload)
-
 class YNABBudget(YNABBase):
     def __init__(self, payload):
         YNABBase.__init__(self, payload)
@@ -154,12 +150,6 @@ class YNABBudget(YNABBase):
             self.categories.append(YNABCategory(cat))
         print("Setting up Category Databases...")
         self.setCategoryDatabase()
-        
-        self.categoryGroups = []
-        for catGroup in payload["category_groups"]:
-            self.categoryGroups.append(YNABCategoryGroup(catGroup))
-        print("Setting up Category Group Databases...")
-        self.setCategoryGroupDatabase()
         
         self.payees = []
         for pay in payload["payees"]:
@@ -180,10 +170,6 @@ class YNABBudget(YNABBase):
     def setPayeeDatabase(self):
         helper.setDatabase("payees", self.payees, "id")
         helper.setDatabase("payees", self.payees, "name")
-
-    def setCategoryGroupDatabase(self):
-        helper.setDatabase("category_groups", self.categoryGroups, "id")
-        helper.setDatabase("category_groups", self.categoryGroups, "name")
 
     def setCategoryDatabase(self):
         helper.setDatabase("category", self.categories, "id")
