@@ -113,10 +113,12 @@ def sendNewYNABTransaction(transactionObject):
             "amount" : transactionObject.amount,
             "payee_name" : transactionObject.payeeName if transactionObject.payeeName != None else "",
             "payee_id" : transactionObject.payeeId,
-            "category_name" : transactionObject.categories[0] if len(transactionObject.categories) == 1 else "Uncategorized",
+            "category_name" : transactionObject.categories[0].name if len(transactionObject.categories) == 1 else "Uncategorized",
             "memo" : transactionObject.memo if transactionObject.memo != None else ""
         }
     }
+
+
 
     response = requests.post(YNAB_BASE_URL + "budgets/" + getEnvs("budgetId") + "/transactions", data=json.dumps(body), headers=setHeaders("ynab"))
 
