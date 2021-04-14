@@ -13,7 +13,7 @@ def handleWebhookEvent(event):
     if(event.type == "TRANSACTION_CREATED"):
         event.getTransaction()
         event.convertTransaction()
-        sendNewYNABTransaction(event.ynabTransaction)
+        event.ynabTransaction.sendNewYNABTransaction()
 
         return str(event.transaction.value) + " paid to " + str(event.transaction.payee) + " at " + str(event.transaction.date)
 
@@ -39,18 +39,22 @@ def setUpAccountDatabases():
 
     if response.status_code == 200:
         payload = response.json()["data"]
-
         upAccounts = shelve.open("databases/up_accounts")
-        ynabAccounts = shelve.open("databases/accounts__name")
 
         for i in payload:
             account = classes.UpAccount(i)
+
+            # Used to get the transfer ID of the Transactional Account to handle Round Up transfers
             if account.type == "TRANSACTIONAL":
+                ynabAccounts = shelve.open("databases/accounts__name")
                 global TRANSACTIONAL_ACCOUNT_ID
                 TRANSACTIONAL_ACCOUNT_ID = ynabAccounts[account.name].transferId
-            upAccounts[account.id] = account.name
+                ynabAccounts.close()
 
-        ynabAccounts.close()
+            UP_ACCOUNTS.append(account.name)
+
+            upAccounts[account.id] = account
+
         upAccounts.close()
     else:
         raise RuntimeError("Couldn't access the Up API. Code: " + str(response.status_code) + "\nError: " + response.reason)
@@ -71,22 +75,22 @@ def setAllYNABDatabases():
     if not os.path.exists('databases'):
         os.makedirs('databases')
 
+    global UP_ACCOUNTS
+    UP_ACCOUNTS = []
+
     response = requests.get(YNAB_BASE_URL + "budgets/" + getEnvs("budgetId"), headers = setHeaders("ynab"))
 
     if response.status_code == 200:
         budget = classes.YNABBudget(response.json()["data"]["budget"])
+
+        # budget.setAccountDatabase()
+        # budget.setCategoryDatabase()
+        # budget.setCategoryGroupDatabase()
+        # budget.setPayeeDatabase()
+        print("Setting up Up Account Databases...")
+        setUpAccountDatabases()
     else:
         raise RuntimeError("Couldn't access the YNAB API. Code: " + str(response.status_code) + "\nError: " + response.reason)
-
-    budget.setAccountDatabase()
-    budget.setCategoryDatabase()
-    budget.setCategoryGroupDatabase()
-    budget.setPayeeDatabase()
-    setUpAccountDatabases()
-
-def createYNABTransaction(upTransaction):
-    newYNABTransaction = classes.YNABTransaction(jsonPayload=upTransaction)
-    return newYNABTransaction
 
 def createUpWebhook():
     body = {
@@ -97,6 +101,7 @@ def createUpWebhook():
             }
         }
     }
+
     response = requests.post(UP_BASE_URL + "webhooks/", data=json.dumps(body), headers=setHeaders("up"))
 
     try:
@@ -105,25 +110,37 @@ def createUpWebhook():
     except requests.exceptions.HTTPError as http_err:
         print("An HTTP Error has occurred.\nStatus Code: " + str(http_err.response.status_code) + "\nError: " + http_err.response.reason)
 
-def sendNewYNABTransaction(transactionObject):
+def pingWebhook():
     body = {
-        "transaction" : {
-            "account_id" : transactionObject.accountId,
-            "date" : transactionObject.date,
-            "amount" : transactionObject.amount,
-            "payee_name" : transactionObject.payeeName if transactionObject.payeeName != None else "",
-            "payee_id" : transactionObject.payeeId,
-            "category_name" : transactionObject.categories[0].name if len(transactionObject.categories) == 1 else "Uncategorized",
-            "memo" : transactionObject.memo if transactionObject.memo != None else ""
+        "data" : {
+            "attributes" : {
+                "url" : getEnvs("HEROKU_BASE_URL") + "up_webhook",
+                "description" : "An automatic webhook to transfer data from Up into YNAB"
+            }
         }
     }
 
-
-
-    response = requests.post(YNAB_BASE_URL + "budgets/" + getEnvs("budgetId") + "/transactions", data=json.dumps(body), headers=setHeaders("ynab"))
+    response = requests.get(UP_BASE_URL + "webhooks/", headers=setHeaders("up"))
 
     try:
         response.raise_for_status()
-        print("Transaction created successfully")
+        if len(response.json()["data"]) > 0:
+            for hook in response.json()["data"]:
+                if hook["attributes"]["url"] == getEnvs("HEROKU_BASE_URL") + "up_webhook":
+                    return True
+            return False
+        else:
+            return False
     except requests.exceptions.HTTPError as http_err:
         print("An HTTP Error has occurred.\nStatus Code: " + str(http_err.response.status_code) + "\nError: " + http_err.response.reason)
+
+def setVariableFromShelf(shelf, key):
+    database = shelve.open(shelf)
+    variable = None
+
+    if key in database:
+        variable = database[key]
+
+    database.close()
+
+    return variable
