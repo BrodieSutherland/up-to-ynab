@@ -3,7 +3,7 @@ import helper
 import shelve
 import json
 
-INTERNAL_TRANSFER_STRINGS = ["Transfer from ", "Transfer to ", "Cover from ", "Quick save transfer from ", "Quick save transfer to "]
+INTERNAL_TRANSFER_STRINGS = ["Transfer to ", "Quick save transfer from ", "Quick save transfer to "]
 
 # UP API CLASSES
 class UpWebhookEvent:
