@@ -17,7 +17,7 @@ I'm very lazy, and frequently forget to track my transactions manually in my bud
 ## Cheers boss, how do I use the thing
 Click this fancy lil button down here and deploy your own version of the app! 
 
-[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy)
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/BrodieSutherland/up-to-ynab)
 
 ## FAQ
 ### I will populate this I swear 
