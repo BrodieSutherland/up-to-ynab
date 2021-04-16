@@ -5,7 +5,6 @@ import shelve
 import requests
 import classes
 
-YNAB_DATABASES = ["accounts", "payees", "category_groups", "categories"]
 YNAB_BASE_URL = "https://api.youneedabudget.com/v1/"
 UP_BASE_URL = "https://api.up.com.au/api/v1/"
 
@@ -83,10 +82,6 @@ def setAllYNABDatabases():
     if response.status_code == 200:
         budget = classes.YNABBudget(response.json()["data"]["budget"])
 
-        # budget.setAccountDatabase()
-        # budget.setCategoryDatabase()
-        # budget.setCategoryGroupDatabase()
-        # budget.setPayeeDatabase()
         print("Setting up Up Account Databases...")
         setUpAccountDatabases()
     else:

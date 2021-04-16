@@ -3,7 +3,7 @@ import helper
 import shelve
 import json
 
-INTERNAL_TRANSFER_STRINGS = ["Transfer to ", "Quick save transfer from ", "Quick save transfer to "]
+INTERNAL_TRANSFER_STRINGS = ["Transfer to ", "Cover to ", "Quick save transfer to "]
 
 # UP API CLASSES
 class UpWebhookEvent:
@@ -102,17 +102,21 @@ class YNABTransaction(YNABBase):
                 self.categories = list(helper.setVariableFromShelf("databases/payeeToCategories", self.payeeName))
 
     def sendNewYNABTransaction(self):
-        body = {
-            "transaction" : {
-                "account_id" : self.accountId,
-                "date" : self.date,
-                "amount" : self.amount,
-                "payee_name" : self.payeeName,
-                "payee_id" : self.payeeId,
-                "category_name" : self.categories[0].name if len(self.categories) == 1 else "Uncategorized",
-                "memo" : self.memo
+
+        try:
+            body = {
+                "transaction" : {
+                    "account_id" : self.accountId,
+                    "date" : self.date,
+                    "amount" : self.amount,
+                    "payee_name" : self.payeeName,
+                    "payee_id" : self.payeeId,
+                    "category_name" : self.categories[0].name if len(self.categories) == 1 else "Uncategorized",
+                    "memo" : self.memo
+                }
             }
-        }
+        except:
+            print("Looks like something has gone wrong in the YNAB Transaction payload generator, here's the body: \n" + json.dumps(self.__dict__))
 
         response = requests.post(helper.YNAB_BASE_URL + "budgets/" + helper.getEnvs("budgetId") + "/transactions", data=json.dumps(body), headers=helper.setHeaders("ynab"))
 
