@@ -1,0 +1,35 @@
+{
+    "name": "Up->YNAB Transaction Forwarder",
+    "description": "A service to send transactions from an Up account to a YNAB budget.",
+    "buildpacks": [
+        {
+          "url": "https://github.com/heroku/heroku-buildpack-pgbouncer"
+        },
+        {
+          "url": "heroku/python"
+        }
+      ],
+      "env": {
+        "budgetId": {
+            "description": "Your YNAB Budget ID",
+            "value": "PUT BUDGET ID HERE"
+          },
+          "HEROKU_BASE_URL": {
+            "description": "Your Heroku App URL",
+            "value": "PUT APP URL HERE"
+          },
+          "PORT": {
+            "description": "Network port",
+            "value": "5000"
+          },
+          "upKey": {
+            "description": "Your UP API token",
+            "value": "PUT UP TOKEN HERE"
+          },
+          "ynabKey": {
+            "description": "Your YNAB API token",
+            "value": "PUT YNAB TOKEN HERE"
+          }          
+      },
+      "repository": "https://github.com/BrodieSutherland/up-to-ynab"
+}
