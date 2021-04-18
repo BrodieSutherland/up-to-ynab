@@ -98,8 +98,10 @@ class YNABTransaction(YNABBase):
                 self.payeeName = None
             else:
                 self.payeeName = upTransaction.payee
-                self.payeeId = helper.setVariableFromShelf("databases/payees__name", self.payeeName).id
-                self.categories = list(helper.setVariableFromShelf("databases/payeeToCategories", self.payeeName))
+                payee = helper.setVariableFromShelf("databases/payees__name", self.payeeName)
+                self.payeeId = payee.id if payee != None else None
+                categories = helper.setVariableFromShelf("databases/payeeToCategories", self.payeeName)
+                self.categories = list(helper.setVariableFromShelf("databases/payeeToCategories", self.payeeName)) if categories != None else []
 
     def sendNewYNABTransaction(self):
 
@@ -116,6 +118,7 @@ class YNABTransaction(YNABBase):
                 }
             }
         except:
+            body = {}
             print("Looks like something has gone wrong in the YNAB Transaction payload generator, here's the body: \n" + json.dumps(self.__dict__))
 
         response = requests.post(helper.YNAB_BASE_URL + "budgets/" + helper.getEnvs("budgetId") + "/transactions", data=json.dumps(body), headers=helper.setHeaders("ynab"))
