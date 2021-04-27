@@ -4,9 +4,11 @@ from pathlib import Path
 import shelve
 import requests
 import classes
+from threading import Lock
 
 YNAB_BASE_URL = "https://api.youneedabudget.com/v1/"
 UP_BASE_URL = "https://api.up.com.au/api/v1/"
+LOCK = Lock()
 
 def handleWebhookEvent(event):
     if(event.type == "TRANSACTION_CREATED"):
@@ -130,6 +132,8 @@ def pingWebhook():
         print("An HTTP Error has occurred.\nStatus Code: " + str(http_err.response.status_code) + "\nError: " + http_err.response.reason)
 
 def setVariableFromShelf(shelf, key):
+    LOCK.acquire()
+
     database = shelve.open(shelf)
     variable = None
 
@@ -137,5 +141,7 @@ def setVariableFromShelf(shelf, key):
         variable = database[key]
 
     database.close()
+
+    LOCK.release()
 
     return variable
