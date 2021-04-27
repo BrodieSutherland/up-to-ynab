@@ -19,5 +19,10 @@ Click this fancy lil button down here and deploy your own version of the app!
 
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/BrodieSutherland/up-to-ynab)
 
+Once deployed and correctly configured, it will transfer any transactions across to your YNAB budget. If you're unlike me, and have been putting your payees in correctly, then this will associate the payees with those same categories. Any payees it doesnt match will require a category to be "complete".
+
+To reload the payee to category database, you will need to restart the dynos (I'm looking into making this system better, let me know if you think of something). Personally I recommend letting it run for a month or two, and then resetting the dynos, so you get a good view of your new common payees.
 ## FAQ
-### I will populate this I swear 
+### Q: Are there any transaction types this doesnt handle?
+Glad you asked! Currently it doesn't support split payees, or payees with multiple categories. Also, when a payment value is changed after the initial creation (like when your Uber charge doesn't match the estimate) the initial transaction value will be entered, but not updated.
+### I will populate this more, I swear 
