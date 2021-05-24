@@ -12,7 +12,7 @@ I'm very lazy, and frequently forget to track my transactions manually in my bud
 |**PORT**       |Port value to run the app off, just use 5000 (works for me)
 |**upKey**      |Your Up API Personal Access token (grab one [here](https://api.up.com.au/getting_started))
 |**ynabKey**    |Your YNAB Access token (find it [here](https://app.youneedabudget.com/settings/developer))
-|**HEROKU_BASE_URL**|The base URL of your Heroku App, I used the [dyno metadata](https://devcenter.heroku.com/articles/dyno-metadata) to get this variable (and a bunch of others) automatically
+|**HEROKU_BASE_URL**|The base URL of your Heroku App, I used the [dyno metadata](https://devcenter.heroku.com/articles/dyno-metadata) to get this variable (and a bunch of others) automatically, but you can populate this manually as `https://<YOUR HEROKU APP NAME HERE>.herokuapp.com/`
 
 ## Cheers boss, how do I use the thing
 Click this fancy lil button down here and deploy your own version of the app! 
