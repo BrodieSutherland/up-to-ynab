@@ -1,9 +1,15 @@
+from os import getenv
 import requests
 import helper
 import shelve
 import json
 
 INTERNAL_TRANSFER_STRINGS = ["Transfer to ", "Cover to ", "Quick save transfer to "]
+INCORRECT_TRANSFER_STRINGS = [
+    "Transfer from ",
+    "Cover from ",
+    "Quick save transfer from ",
+]
 
 # UP API CLASSES
 class UpWebhookEvent:
@@ -17,6 +23,7 @@ class UpWebhookEvent:
             print("Not a transaction?")
 
     def getTransaction(self):
+        """Retrieves the Up transaction from the API and stores it as an UpTransaction under self.transaction"""
         response = requests.get(
             helper.UP_BASE_URL + "transactions/" + self.transactionId,
             headers=helper.setHeaders("up"),
@@ -34,6 +41,7 @@ class UpWebhookEvent:
             )
 
     def convertTransaction(self):
+        """Converts the Up transaction to a YNAB Transaction"""
         if self.transaction:
             self.ynabTransaction = YNABTransaction(upTransaction=self.transaction)
         else:
@@ -72,7 +80,7 @@ class YNABBase:
 
 
 class YNABTransaction(YNABBase):
-    def __init__(self, jsonPayload: dict = None, upTransaction: dict = None):
+    def __init__(self, jsonPayload: dict = None, upTransaction: UpTransaction = None):
         if jsonPayload != None:
             self.id = jsonPayload["id"]
             self.accountId = jsonPayload["account_id"]
@@ -136,7 +144,7 @@ class YNABTransaction(YNABBase):
                 )
 
     def sendNewYNABTransaction(self):
-
+        """Sends the YNAB Transaction to YNAB"""
         try:
             body = {
                 "transaction": {
@@ -151,6 +159,8 @@ class YNABTransaction(YNABBase):
                     "memo": self.memo,
                 }
             }
+            if getenv("DEBUG_MODE") == "True":
+                print(body)
         except:
             body = {}
             print(
@@ -224,18 +234,22 @@ class YNABBudget(YNABBase):
         self.setPayeeCategoryDatabase()
 
     def setAccountDatabase(self):
+        """Sets the account database"""
         helper.setDatabase("accounts", self.accounts, "id")
         helper.setDatabase("accounts", self.accounts, "name")
 
     def setPayeeDatabase(self):
+        """Sets the payee database"""
         helper.setDatabase("payees", self.payees, "id")
         helper.setDatabase("payees", self.payees, "name")
 
     def setCategoryDatabase(self):
+        """Sets the category database"""
         helper.setDatabase("category", self.categories, "id")
         helper.setDatabase("category", self.categories, "name")
 
     def setPayeeCategoryDatabase(self):
+        """Sets the payee->category database"""
         payeeToCategories = shelve.open("databases/payeeToCategories")
         categories = shelve.open("databases/categories__id")
 

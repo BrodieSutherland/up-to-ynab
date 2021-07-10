@@ -11,11 +11,16 @@ UP_BASE_URL = "https://api.up.com.au/api/v1/"
 LOCK = Lock()
 
 
-def handleWebhookEvent(event: classes.UpWebhookEvent):
+def handleWebhookEvent(event):
+    """Initiates the logic to transfer data from Up into YNAB"""
     if event.type == "TRANSACTION_CREATED":
         event.getTransaction()
-        event.convertTransaction()
-        event.ynabTransaction.sendNewYNABTransaction()
+        if not any(
+            substring in event.transaction.payee
+            for substring in classes.INCORRECT_TRANSFER_STRINGS
+        ):
+            event.convertTransaction()
+            event.ynabTransaction.sendNewYNABTransaction()
 
         return (
             str(event.transaction.value)
@@ -27,6 +32,7 @@ def handleWebhookEvent(event: classes.UpWebhookEvent):
 
 
 def getEnvs(var: str) -> str:
+    """Gets the environment variables from the Heroku environment"""
     if os.environ.get(var):
         return os.environ.get(var)
     else:
@@ -34,6 +40,7 @@ def getEnvs(var: str) -> str:
 
 
 def setDatabase(shelf: str, objectList: list[str], key: str):
+    """Sets a database with a list of objects for a given key value"""
     shelfDatabase = shelve.open("databases/" + shelf + "__" + key)
 
     for i in objectList:
@@ -46,6 +53,7 @@ def setDatabase(shelf: str, objectList: list[str], key: str):
 
 
 def setUpAccountDatabases():
+    """Sets the databases for all accounts in Up"""
     response = requests.get(UP_BASE_URL + "accounts/", headers=setHeaders("up"))
 
     if response.status_code == 200:
@@ -77,6 +85,7 @@ def setUpAccountDatabases():
 
 
 def setHeaders(type: str) -> dict:
+    """Sets the headers for the requests"""
     switch = {"up": "upKey", "ynab": "ynabKey"}
 
     headers = {
@@ -87,6 +96,7 @@ def setHeaders(type: str) -> dict:
 
 
 def setAllYNABDatabases():
+    """Sets the databases for all accounts in YNAB"""
     if not os.path.exists("databases"):
         os.makedirs("databases")
 
@@ -112,6 +122,7 @@ def setAllYNABDatabases():
 
 
 def createUpWebhook():
+    """Creates a new Up Webhook"""
     body = {
         "data": {
             "attributes": {
@@ -138,6 +149,7 @@ def createUpWebhook():
 
 
 def pingWebhook() -> bool:
+    """Checks if the webhook is active"""
     body = {
         "data": {
             "attributes": {
@@ -171,6 +183,7 @@ def pingWebhook() -> bool:
 
 
 def getVariableFromShelf(shelf: str, key: str) -> str:
+    """Gets a variable from a shelf"""
     LOCK.acquire()
 
     database = shelve.open(shelf)
@@ -187,6 +200,7 @@ def getVariableFromShelf(shelf: str, key: str) -> str:
 
 
 def setVariableToShelf(shelf: str, key: str, variable: str):
+    """Sets a variable to a shelf"""
     LOCK.acquire()
 
     database = shelve.open(shelf)
@@ -198,6 +212,7 @@ def setVariableToShelf(shelf: str, key: str, variable: str):
 
 
 def deleteVariableFromShelf(shelf: str, key: str):
+    """Deletes a variable from a shelf"""
     LOCK.acquire()
 
     database = shelve.open(shelf)
@@ -208,6 +223,7 @@ def deleteVariableFromShelf(shelf: str, key: str):
 
 
 def refresh():
+    """Refreshes the databases"""
     print("Refreshing...")
     setAllYNABDatabases()
     print("Refresh Complete")

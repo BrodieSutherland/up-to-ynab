@@ -12,6 +12,7 @@ app = Flask(__name__)
 # Endpoint to handle updates from Up
 @app.route("/up_webhook", methods=["POST"])
 def respond() -> Response:
+    """Handles any webhook event from Up"""
     eventPayload = classes.UpWebhookEvent(request.json["data"])
     outcome = helper.handleWebhookEvent(eventPayload)
 
@@ -23,6 +24,7 @@ def respond() -> Response:
 # Endpoint to refresh peyee databases
 @app.route("/refresh", methods=["GET"])
 def refresh() -> Response:
+    """Refreshes databases"""
     helper.refresh()
     return Response(status=200)
 
