@@ -11,7 +11,7 @@ UP_BASE_URL = "https://api.up.com.au/api/v1/"
 LOCK = Lock()
 
 
-def handleWebhookEvent(event):
+def handleWebhookEvent(event: classes.UpWebhookEvent):
     if event.type == "TRANSACTION_CREATED":
         event.getTransaction()
         event.convertTransaction()
@@ -26,14 +26,14 @@ def handleWebhookEvent(event):
         )
 
 
-def getEnvs(var):
+def getEnvs(var: str) -> str:
     if os.environ.get(var):
         return os.environ.get(var)
     else:
         print("Couldn't find this variable")
 
 
-def setDatabase(shelf, objectList, key):
+def setDatabase(shelf: str, objectList: list[str], key: str):
     shelfDatabase = shelve.open("databases/" + shelf + "__" + key)
 
     for i in objectList:
@@ -76,7 +76,7 @@ def setUpAccountDatabases():
         )
 
 
-def setHeaders(type):
+def setHeaders(type: str) -> dict:
     switch = {"up": "upKey", "ynab": "ynabKey"}
 
     headers = {
@@ -137,7 +137,7 @@ def createUpWebhook():
         )
 
 
-def pingWebhook():
+def pingWebhook() -> bool:
     body = {
         "data": {
             "attributes": {
@@ -170,7 +170,7 @@ def pingWebhook():
         )
 
 
-def getVariableFromShelf(shelf, key):
+def getVariableFromShelf(shelf: str, key: str) -> str:
     LOCK.acquire()
 
     database = shelve.open(shelf)
@@ -186,7 +186,7 @@ def getVariableFromShelf(shelf, key):
     return variable
 
 
-def setVariableToShelf(shelf, key, variable):
+def setVariableToShelf(shelf: str, key: str, variable: str):
     LOCK.acquire()
 
     database = shelve.open(shelf)
@@ -197,7 +197,7 @@ def setVariableToShelf(shelf, key, variable):
     LOCK.release()
 
 
-def deleteVariableFromShelf(shelf, key):
+def deleteVariableFromShelf(shelf: str, key: str):
     LOCK.acquire()
 
     database = shelve.open(shelf)
@@ -205,3 +205,9 @@ def deleteVariableFromShelf(shelf, key):
     database.close()
 
     LOCK.release()
+
+
+def refresh():
+    print("Refreshing...")
+    setAllYNABDatabases()
+    print("Refresh Complete")

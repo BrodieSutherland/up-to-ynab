@@ -6,8 +6,12 @@ import os
 app = Flask(__name__)
 
 
+# ---------------
+# ROUTES
+# ---------------
+# Endpoint to handle updates from Up
 @app.route("/up_webhook", methods=["POST"])
-def respond():
+def respond() -> Response:
     eventPayload = classes.UpWebhookEvent(request.json["data"])
     outcome = helper.handleWebhookEvent(eventPayload)
 
@@ -16,9 +20,9 @@ def respond():
     return Response(status=200)
 
 
-# endpoint to refresh the databases
+# Endpoint to refresh peyee databases
 @app.route("/refresh", methods=["GET"])
-def refresh():
+def refresh() -> Response:
     helper.refresh()
     return Response(status=200)
 

@@ -7,7 +7,7 @@ INTERNAL_TRANSFER_STRINGS = ["Transfer to ", "Cover to ", "Quick save transfer t
 
 # UP API CLASSES
 class UpWebhookEvent:
-    def __init__(self, payload):
+    def __init__(self, payload: dict):
         self.id = payload["id"]
         self.type = payload["attributes"]["eventType"]
         self.date = payload["attributes"]["createdAt"]
@@ -41,7 +41,7 @@ class UpWebhookEvent:
 
 
 class UpTransaction:
-    def __init__(self, payload):
+    def __init__(self, payload: dict):
         self.id = payload["id"]
         attributes = payload["attributes"]
         self.isInternal = True if attributes["rawText"] == None else False
@@ -58,7 +58,7 @@ class UpTransaction:
 
 
 class UpAccount:
-    def __init__(self, payload):
+    def __init__(self, payload: dict):
         self.id = payload["id"]
         self.name = payload["attributes"]["displayName"]
         self.type = payload["attributes"]["accountType"]
@@ -66,13 +66,13 @@ class UpAccount:
 
 # YNAB API CLASSES
 class YNABBase:
-    def __init__(self, payload):
+    def __init__(self, payload: dict):
         self.id = payload["id"]
         self.name = payload["name"]
 
 
 class YNABTransaction(YNABBase):
-    def __init__(self, jsonPayload=None, upTransaction=None):
+    def __init__(self, jsonPayload: dict = None, upTransaction: dict = None):
         if jsonPayload != None:
             self.id = jsonPayload["id"]
             self.accountId = jsonPayload["account_id"]
@@ -180,23 +180,23 @@ class YNABTransaction(YNABBase):
 
 
 class YNABAccount(YNABBase):
-    def __init__(self, payload):
+    def __init__(self, payload: dict):
         YNABBase.__init__(self, payload)
         self.transferId = payload["transfer_payee_id"]
 
 
 class YNABPayee(YNABBase):
-    def __init__(self, payload):
+    def __init__(self, payload: dict):
         YNABBase.__init__(self, payload)
 
 
 class YNABCategory(YNABBase):
-    def __init__(self, payload):
+    def __init__(self, payload: dict):
         YNABBase.__init__(self, payload)
 
 
 class YNABBudget(YNABBase):
-    def __init__(self, payload):
+    def __init__(self, payload: dict):
         YNABBase.__init__(self, payload)
 
         self.accounts = []
