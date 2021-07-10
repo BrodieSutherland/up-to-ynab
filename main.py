@@ -5,7 +5,8 @@ import os
 
 app = Flask(__name__)
 
-@app.route('/up_webhook', methods=['POST'])
+
+@app.route("/up_webhook", methods=["POST"])
 def respond():
     eventPayload = classes.UpWebhookEvent(request.json["data"])
     outcome = helper.handleWebhookEvent(eventPayload)
@@ -14,8 +15,16 @@ def respond():
 
     return Response(status=200)
 
-if(__name__ == "__main__"):
+
+# endpoint to refresh the databases
+@app.route("/refresh", methods=["GET"])
+def refresh():
+    helper.refresh()
+    return Response(status=200)
+
+
+if __name__ == "__main__":
     helper.setAllYNABDatabases()
     if not helper.pingWebhook():
         helper.createUpWebhook()
-    app.run(host='0.0.0.0', port=os.environ.get('PORT'))
+    app.run(host="0.0.0.0", port=os.environ.get("PORT"))

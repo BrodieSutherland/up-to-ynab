@@ -17,19 +17,28 @@ class UpWebhookEvent:
             print("Not a transaction?")
 
     def getTransaction(self):
-        response = requests.get(helper.UP_BASE_URL + "transactions/" + self.transactionId, headers=helper.setHeaders("up"))
+        response = requests.get(
+            helper.UP_BASE_URL + "transactions/" + self.transactionId,
+            headers=helper.setHeaders("up"),
+        )
 
         try:
             response.raise_for_status()
             self.transaction = UpTransaction(response.json()["data"])
         except requests.exceptions.HTTPError as http_err:
-            print("An HTTP Error has occurred.\nStatus Code: " + str(http_err.response.status_code) + "\nError: " + http_err.response.reason)
+            print(
+                "An HTTP Error has occurred.\nStatus Code: "
+                + str(http_err.response.status_code)
+                + "\nError: "
+                + http_err.response.reason
+            )
 
     def convertTransaction(self):
         if self.transaction:
             self.ynabTransaction = YNABTransaction(upTransaction=self.transaction)
         else:
             print("There is currently no transaction against this Event")
+
 
 class UpTransaction:
     def __init__(self, payload):
@@ -43,7 +52,10 @@ class UpTransaction:
         self.date = attributes["createdAt"]
         self.accountId = payload["relationships"]["account"]["data"]["id"]
 
-        self.accountName = helper.setVariableFromShelf("databases/up_accounts", self.accountId).name
+        self.accountName = helper.getVariableFromShelf(
+            "databases/up_accounts", self.accountId
+        ).name
+
 
 class UpAccount:
     def __init__(self, payload):
@@ -51,18 +63,20 @@ class UpAccount:
         self.name = payload["attributes"]["displayName"]
         self.type = payload["attributes"]["accountType"]
 
+
 # YNAB API CLASSES
 class YNABBase:
     def __init__(self, payload):
         self.id = payload["id"]
         self.name = payload["name"]
 
+
 class YNABTransaction(YNABBase):
     def __init__(self, jsonPayload=None, upTransaction=None):
-        if(jsonPayload != None):
+        if jsonPayload != None:
             self.id = jsonPayload["id"]
             self.accountId = jsonPayload["account_id"]
-            self.date = jsonPayload["date"][0 : 10]
+            self.date = jsonPayload["date"][0:10]
             self.amount = int(float(jsonPayload["amount"])) * 1000
             self.categoryId = jsonPayload["category_id"]
             self.memo = jsonPayload["memo"]
@@ -71,12 +85,16 @@ class YNABTransaction(YNABBase):
             if "payee_name" in jsonPayload:
                 self.payeeName = jsonPayload["payee_name"]
             else:
-                self.payeeName = helper.setVariableFromShelf("databases/payees__id", self.payeeId).name
+                self.payeeName = helper.getVariableFromShelf(
+                    "databases/payees__id", self.payeeId
+                ).name
 
-        elif(upTransaction != None):
-            self.accountId = helper.setVariableFromShelf("databases/accounts__name", upTransaction.accountName).id
+        elif upTransaction != None:
+            self.accountId = helper.getVariableFromShelf(
+                "databases/accounts__name", upTransaction.accountName
+            ).id
 
-            self.date = upTransaction.date[0 : 10]
+            self.date = upTransaction.date[0:10]
             self.amount = int(upTransaction.value * 1000)
             self.memo = upTransaction.message
 
@@ -93,54 +111,89 @@ class YNABTransaction(YNABBase):
                     accountName = accountName.replace(sub, "")
                 for account in helper.UP_ACCOUNTS:
                     if accountName in account:
-                        self.payeeId = helper.setVariableFromShelf("databases/accounts__name", account).transferId
+                        self.payeeId = helper.getVariableFromShelf(
+                            "databases/accounts__name", account
+                        ).transferId
                 self.categories = []
                 self.payeeName = None
             else:
                 self.payeeName = upTransaction.payee
-                payee = helper.setVariableFromShelf("databases/payees__name", self.payeeName)
+                payee = helper.getVariableFromShelf(
+                    "databases/payees__name", self.payeeName
+                )
                 self.payeeId = payee.id if payee != None else None
-                categories = helper.setVariableFromShelf("databases/payeeToCategories", self.payeeName)
-                self.categories = list(helper.setVariableFromShelf("databases/payeeToCategories", self.payeeName)) if categories != None else []
+                categories = helper.getVariableFromShelf(
+                    "databases/payeeToCategories", self.payeeName
+                )
+                self.categories = (
+                    list(
+                        helper.getVariableFromShelf(
+                            "databases/payeeToCategories", self.payeeName
+                        )
+                    )
+                    if categories != None
+                    else []
+                )
 
     def sendNewYNABTransaction(self):
 
         try:
             body = {
-                "transaction" : {
-                    "account_id" : self.accountId,
-                    "date" : self.date,
-                    "amount" : self.amount,
-                    "payee_name" : self.payeeName,
-                    "payee_id" : self.payeeId,
-                    "category_name" : self.categories[0].name if len(self.categories) == 1 else "Uncategorized",
-                    "memo" : self.memo
+                "transaction": {
+                    "account_id": self.accountId,
+                    "date": self.date,
+                    "amount": self.amount,
+                    "payee_name": self.payeeName,
+                    "payee_id": self.payeeId,
+                    "category_name": self.categories[0].name
+                    if len(self.categories) == 1
+                    else "Uncategorized",
+                    "memo": self.memo,
                 }
             }
         except:
             body = {}
-            print("Looks like something has gone wrong in the YNAB Transaction payload generator, here's the body: \n" + json.dumps(self.__dict__))
+            print(
+                "Looks like something has gone wrong in the YNAB Transaction payload generator, here's the body: \n"
+                + json.dumps(self.__dict__)
+            )
 
-        response = requests.post(helper.YNAB_BASE_URL + "budgets/" + helper.getEnvs("budgetId") + "/transactions", data=json.dumps(body), headers=helper.setHeaders("ynab"))
+        response = requests.post(
+            helper.YNAB_BASE_URL
+            + "budgets/"
+            + helper.getEnvs("budgetId")
+            + "/transactions",
+            data=json.dumps(body),
+            headers=helper.setHeaders("ynab"),
+        )
 
         try:
             response.raise_for_status()
             print("Transaction created successfully")
         except requests.exceptions.HTTPError as http_err:
-            print("An HTTP Error has occurred.\nStatus Code: " + str(http_err.response.status_code) + "\nError: " + http_err.response.reason)
+            print(
+                "An HTTP Error has occurred.\nStatus Code: "
+                + str(http_err.response.status_code)
+                + "\nError: "
+                + http_err.response.reason
+            )
+
 
 class YNABAccount(YNABBase):
     def __init__(self, payload):
         YNABBase.__init__(self, payload)
         self.transferId = payload["transfer_payee_id"]
 
+
 class YNABPayee(YNABBase):
     def __init__(self, payload):
         YNABBase.__init__(self, payload)
 
+
 class YNABCategory(YNABBase):
     def __init__(self, payload):
         YNABBase.__init__(self, payload)
+
 
 class YNABBudget(YNABBase):
     def __init__(self, payload):
@@ -151,13 +204,13 @@ class YNABBudget(YNABBase):
             self.accounts.append(YNABAccount(acc))
         print("Setting up Account Databases...")
         self.setAccountDatabase()
-        
+
         self.categories = []
         for cat in payload["categories"]:
             self.categories.append(YNABCategory(cat))
         print("Setting up Category Databases...")
         self.setCategoryDatabase()
-        
+
         self.payees = []
         for pay in payload["payees"]:
             self.payees.append(YNABPayee(pay))
@@ -189,14 +242,23 @@ class YNABBudget(YNABBase):
         for transaction in self.transactions:
             if transaction.categoryId and "Transfer : " not in transaction.payeeName:
                 if transaction.categoryId not in categories:
-                    response = requests.get(helper.YNAB_BASE_URL + "budgets/" + helper.getEnvs("budgetId") + "/categories/" + transaction.categoryId, headers=helper.setHeaders("ynab")).json()["data"]["category"]
+                    response = requests.get(
+                        helper.YNAB_BASE_URL
+                        + "budgets/"
+                        + helper.getEnvs("budgetId")
+                        + "/categories/"
+                        + transaction.categoryId,
+                        headers=helper.setHeaders("ynab"),
+                    ).json()["data"]["category"]
                     self.categories.append(YNABCategory(response))
                     categories[transaction.categoryId] = YNABCategory(response)
 
                 if transaction.payeeName not in payeeToCategories:
                     payeeToCategories[transaction.payeeName] = set()
-                    
-                payeeToCategories[transaction.payeeName].add(categories[transaction.categoryId])
+
+                payeeToCategories[transaction.payeeName].add(
+                    categories[transaction.categoryId]
+                )
 
         categories.close()
         payeeToCategories.close()
