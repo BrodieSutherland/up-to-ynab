@@ -52,7 +52,14 @@ class UpTransaction:
     def __init__(self, payload: dict):
         self.id = payload["id"]
         attributes = payload["attributes"]
-        self.isInternal = True if attributes["rawText"] == None else False
+        self.isInternal = (
+            True
+            if any(
+                internalString in attributes["description"]
+                for internalString in INTERNAL_TRANSFER_STRINGS
+            )
+            else False
+        )
         self.status = attributes["status"]
         self.payee = attributes["description"]
         self.message = attributes["message"]
