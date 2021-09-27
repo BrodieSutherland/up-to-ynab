@@ -2,3 +2,5 @@ databases/*
 .vscode/*
 
 __pycache__/
+
+.env
