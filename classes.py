@@ -94,6 +94,7 @@ class YNABTransaction(YNABBase):
             self.date = jsonPayload["date"][0:10]
             self.amount = int(float(jsonPayload["amount"])) * 1000
             self.categoryId = jsonPayload["category_id"]
+            self.multi = False if jsonPayload["subtransactions"] == [] else True
             self.memo = jsonPayload["memo"]
 
             self.payeeId = jsonPayload["payee_id"]
@@ -235,10 +236,19 @@ class YNABBudget(YNABBase):
         self.setPayeeDatabase()
 
         self.transactions = []
-        for transaction in payload["transactions"]:
-            self.transactions.append(YNABTransaction(jsonPayload=transaction))
-        print("Setting up Payee->Category Databases...")
-        self.setPayeeCategoryDatabase()
+        response = requests.get(
+            helper.YNAB_BASE_URL
+            + "budgets/"
+            + helper.getEnvs("budgetId")
+            + "/transactions",
+            headers=helper.setHeaders("ynab"),
+        )
+
+        if response.status_code == 200:
+            for transaction in response.json()["data"]["transactions"]:
+                self.transactions.append(YNABTransaction(jsonPayload=transaction))
+            print("Setting up Payee->Category Databases...")
+            self.setPayeeCategoryDatabase()
 
     def setAccountDatabase(self):
         """Sets the account database"""
@@ -261,7 +271,11 @@ class YNABBudget(YNABBase):
         categories = shelve.open("databases/categories__id")
 
         for transaction in self.transactions:
-            if transaction.categoryId and "Transfer : " not in transaction.payeeName:
+            if (
+                transaction.categoryId
+                and "Transfer : " not in transaction.payeeName
+                and not transaction.multi
+            ):
                 if transaction.categoryId not in categories:
                     response = requests.get(
                         helper.YNAB_BASE_URL
