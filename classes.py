@@ -4,11 +4,17 @@ import helper
 import shelve
 import json
 
-INTERNAL_TRANSFER_STRINGS = ["Transfer to ", "Cover to ", "Quick save transfer to "]
+INTERNAL_TRANSFER_STRINGS = [
+    "Transfer to ",
+    "Cover to ",
+    "Quick save transfer to ",
+    "Forward to ",
+]
 INCORRECT_TRANSFER_STRINGS = [
     "Transfer from ",
     "Cover from ",
     "Quick save transfer from ",
+    "Forward from ",
 ]
 
 # UP API CLASSES
@@ -88,10 +94,10 @@ class UpTransaction:
             + self.payee
             + "\n"
             + "Account: "
-            + self.accountName
+            + (self.accountName if self.accountName else "None")
             + "\n"
             + "Message: "
-            + self.message
+            + (self.message if self.message else "None")
             + "\n"
             + "Status: "
             + self.status
