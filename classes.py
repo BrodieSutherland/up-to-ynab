@@ -77,7 +77,7 @@ class UpTransaction:
             "databases/up_accounts", self.accountId
         ).name
 
-        if getenv("DEBUG_MODE"):
+        if getenv("DEBUG_MODE") == "True":
             print("--------------------------------------------------------")
             print(self)
 
@@ -113,7 +113,7 @@ class UpAccount:
         self.name = payload["attributes"]["displayName"]
         self.type = payload["attributes"]["accountType"]
 
-        if getenv("DEBUG_MODE"):
+        if getenv("DEBUG_MODE") == "True":
             print(self)
 
     def __str__(self) -> str:
@@ -193,7 +193,7 @@ class YNABTransaction(YNABBase):
                     else []
                 )
 
-        if getenv("DEBUG_MODE"):
+        if getenv("DEBUG_MODE") == "True":
             print(self)
 
     def sendNewYNABTransaction(self):
@@ -217,7 +217,7 @@ class YNABTransaction(YNABBase):
                 }
             }
 
-            if getenv("DEBUG_MODE"):
+            if getenv("DEBUG_MODE") == "True":
                 print(body)
 
             response = requests.post(
