@@ -72,6 +72,7 @@ class UpTransaction:
         ).name
 
         if getenv("DEBUG_MODE"):
+            print("--------------------------------------------------------")
             print(self)
 
     def __str__(self) -> str:
@@ -148,7 +149,6 @@ class YNABTransaction(YNABBase):
             self.date = upTransaction.date[0:10]
             self.amount = int(upTransaction.value * 1000)
             self.memo = upTransaction.message
-            self.payeeId = None
 
             if upTransaction.payee == "Round Up":
                 self.payeeName = None
@@ -158,7 +158,7 @@ class YNABTransaction(YNABBase):
                 # Some wack shit in here because the transferId value in the Up Transaction payload doesn't work/is very rarely shown
                 # so I've had to build some janky shit to get around it, keen to turf this ASAP
 
-                accountName = upTransaction.payee.replace("Spending", "Up Account")
+                accountName = upTransaction.payee
                 for sub in INTERNAL_TRANSFER_STRINGS:
                     accountName = accountName.replace(sub, "")
                 for account in helper.UP_ACCOUNTS:
@@ -193,19 +193,26 @@ class YNABTransaction(YNABBase):
     def sendNewYNABTransaction(self):
         """Sends the YNAB Transaction to YNAB"""
         try:
+            category = (
+                self.categories[0].name
+                if len(self.categories) == 1
+                else "Uncategorized"
+            )
+
             body = {
                 "transaction": {
                     "account_id": self.accountId,
                     "date": self.date,
                     "amount": self.amount,
-                    "payee_name": self.payeeName,
+                    "payee_name": self.payeeName if self.payeeName else "",
                     "payee_id": self.payeeId,
-                    "category_name": self.categories[0].name
-                    if len(self.categories) == 1
-                    else "Uncategorized",
+                    "category_name": category,
                     "memo": self.memo,
                 }
             }
+
+            if getenv("DEBUG_MODE"):
+                print(body)
 
             response = requests.post(
                 helper.YNAB_BASE_URL
@@ -229,8 +236,8 @@ class YNABTransaction(YNABBase):
                 print("Payee Name: " + self.payeeName)
             if self.payeeId:
                 print("Payee ID: " + self.payeeId)
-            if self.categories[0]:
-                print("Category: " + self.categories[0].__dict__)
+            if category:
+                print("Category: " + category)
             if self.memo:
                 print("Memo: " + self.memo)
 
@@ -244,6 +251,7 @@ class YNABTransaction(YNABBase):
                 + "\nError: "
                 + http_err.response.reason
             )
+        print("--------------------------------------------------------")
 
     def __str__(self) -> str:
         return (
