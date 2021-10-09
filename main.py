@@ -30,7 +30,11 @@ def refresh() -> Response:
 
 
 if __name__ == "__main__":
+    print("Starting server...")
     helper.setAllYNABDatabases()
     if not helper.pingWebhook():
         helper.createUpWebhook()
+    print("Ready for transactions!")
+    if helper.getEnvs("DEBUG_MODE"):
+        print("DEBUG MODE ENABLED")
     app.run(host="0.0.0.0", port=os.environ.get("PORT"))
