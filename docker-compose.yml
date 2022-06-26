@@ -1,0 +1,12 @@
+version: "3.4"
+
+services:
+  uptoynab:
+    image: brodiesutherland/uptoynab:unraid
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    ports:
+      - 5001:5001
+    env_file:
+      - .env
