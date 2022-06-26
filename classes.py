@@ -214,9 +214,7 @@ class YNABTransaction(YNABBase):
                     "payee_id": self.payeeId,
                     "category_name": category,
                     "memo": self.memo,
-                    "import_id": (
-                        self.payeeName + " - " + self.amount + " - " + self.date
-                    ),
+                    "import_id": ("Up to YNAB - " + self.date),
                 }
             }
 
