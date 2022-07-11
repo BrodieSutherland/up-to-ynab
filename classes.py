@@ -133,6 +133,7 @@ class YNABTransaction(YNABBase):
             self.id = jsonPayload["id"]
             self.accountId = jsonPayload["account_id"]
             self.date = jsonPayload["date"][0:10]
+            self.dateTime = jsonPayload["date"]
             self.amount = int(float(jsonPayload["amount"])) * 1000
             self.categoryId = jsonPayload["category_id"]
             self.multi = False if jsonPayload["subtransactions"] == [] else True
@@ -153,6 +154,7 @@ class YNABTransaction(YNABBase):
             ).id
 
             self.date = upTransaction.date[0:10]
+            self.dateTime = upTransaction.date
             self.amount = int(upTransaction.value * 1000)
             self.memo = upTransaction.message
 
@@ -214,7 +216,7 @@ class YNABTransaction(YNABBase):
                     "payee_id": self.payeeId,
                     "category_name": category,
                     "memo": self.memo,
-                    "import_id": ("Up to YNAB - " + self.date),
+                    "import_id": ("Up to YNAB-" + self.dateTime.replace(" ", "")),
                 }
             }
 
