@@ -27,22 +27,26 @@ First things first, we need to do some prep work. In order to match your Up Acco
 | **Savings 1**                  |       **Savings 1**        |
 | **😀 Savings 2**               |      **😀 Savings 2**      |
 
-To actually use it, there's 3 steps: 1. `git clone https://github.com/BrodieSutherland/up-to-ynab.git` 2. Edit `.env` with the values as shown under "Environment Variables" above 3. `docker-compose up -d`
+To actually use it, there's 3 steps:
+
+1. `git clone https://github.com/BrodieSutherland/up-to-ynab.git`
+2. Edit `.env` with the values as shown under "Environment Variables" above
+3. `docker-compose up -d`
 
 To reset your databases you can either try hitting your `BASE_URL:PORT` with a GET request, or just restart the service (`docker-compose down && docker-compose up -d`)
 
 <details>
-    <summary>Legacy Heroku Deploy Instructions</summary>
+<summary>Legacy Heroku Deploy Instructions</summary>
 
-    ###I have not tested this/used heroku in a long time, and I cannot confirm this works, use at your own peril!
+### I have not tested this/used heroku in a long time, and I cannot confirm this works, use at your own peril!
 
-    Now that's all done, click this fancy lil button down here and deploy your own version of the app!
+Now that's all done, click this fancy lil button down here and deploy your own version of the app!
 
-    [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/BrodieSutherland/up-to-ynab)
+[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/BrodieSutherland/up-to-ynab)
 
-    Once deployed and correctly configured, it will transfer any transactions across to your YNAB budget. If you're unlike me, and have been putting your payees in correctly, then this will associate the payees with those same categories. Any payees it doesnt match will require a category to be "complete".
+Once deployed and correctly configured, it will transfer any transactions across to your YNAB budget. If you're unlike me, and have been putting your payees in correctly, then this will associate the payees with those same categories. Any payees it doesnt match will require a category to be "complete".
 
-    To reload the payee to category database, you will need to restart the dynos (I'm looking into making this system better, let me know if you think of something). Personally I recommend letting it run for a month or two, and then resetting the dynos, so you get a good view of your new common payees.
+To reload the payee to category database, you will need to restart the dynos (I'm looking into making this system better, let me know if you think of something). Personally I recommend letting it run for a month or two, and then resetting the dynos, so you get a good view of your new common payees.
 
 </details>
 
