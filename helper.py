@@ -126,7 +126,7 @@ def createUpWebhook():
     body = {
         "data": {
             "attributes": {
-                "url": getEnvs("HEROKU_BASE_URL") + "up_webhook",
+                "url": getEnvs("BASE_URL"),
                 "description": "An automatic webhook to transfer data from Up into YNAB",
             }
         }
@@ -153,7 +153,7 @@ def pingWebhook() -> bool:
     body = {
         "data": {
             "attributes": {
-                "url": getEnvs("HEROKU_BASE_URL") + "up_webhook",
+                "url": getEnvs("BASE_URL"),
                 "description": "An automatic webhook to transfer data from Up into YNAB",
             }
         }
@@ -165,10 +165,7 @@ def pingWebhook() -> bool:
         response.raise_for_status()
         if len(response.json()["data"]) > 0:
             for hook in response.json()["data"]:
-                if (
-                    hook["attributes"]["url"]
-                    == getEnvs("HEROKU_BASE_URL") + "up_webhook"
-                ):
+                if hook["attributes"]["url"] == getEnvs("BASE_URL"):
                     return True
             return False
         else:

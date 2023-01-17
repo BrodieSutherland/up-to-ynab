@@ -1,32 +1,32 @@
 {
-    "name": "Up->YNAB Transaction Forwarder",
-    "description": "A service to send transactions from an Up account to a YNAB budget.",
-    "buildpacks": [
-        {
-          "url": "heroku/python"
-        }
-      ],
-      "env": {
-        "budgetId": {
-            "description": "Your YNAB Budget ID",
-            "value": "PUT BUDGET ID HERE"
-          },
-          "PORT": {
-            "description": "Network port",
-            "value": "5000"
-          },
-          "upKey": {
-            "description": "Your UP API token",
-            "value": "PUT UP TOKEN HERE"
-          },
-          "ynabKey": {
-            "description": "Your YNAB API token",
-            "value": "PUT YNAB TOKEN HERE"
-          },
-          "HEROKU_BASE_URL": {
-              "description": "The URL of this app",
-              "value": "https://<YOUR APP NAME HERE>.herokuapp.com/"
-          }
-      },
-      "repository": "https://github.com/BrodieSutherland/up-to-ynab"
+  "name": "Up->YNAB Transaction Forwarder",
+  "description": "A service to send transactions from an Up account to a YNAB budget.",
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "env": {
+    "budgetId": {
+      "description": "Your YNAB Budget ID",
+      "value": "PUT BUDGET ID HERE"
+    },
+    "PORT": {
+      "description": "Network port",
+      "value": "5000"
+    },
+    "upKey": {
+      "description": "Your UP API token",
+      "value": "PUT UP TOKEN HERE"
+    },
+    "ynabKey": {
+      "description": "Your YNAB API token",
+      "value": "PUT YNAB TOKEN HERE"
+    },
+    "BASE_URL": {
+      "description": "The URL of this app",
+      "value": "https://<YOUR APP NAME HERE>.herokuapp.com/"
+    }
+  },
+  "repository": "https://github.com/BrodieSutherland/up-to-ynab"
 }
