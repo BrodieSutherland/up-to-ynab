@@ -26,5 +26,5 @@ COPY . .
 RUN adduser -u 5678 --disabled-password --gecos "" appuser && chown -R appuser /app
 USER appuser
 
-# Start Gunicorn server
-CMD ["gunicorn", "main:app", "-b", "0.0.0.0:5001", "-w", "4", "--capture-output"]
+# Start the Flask development server
+CMD ["python", "main.py"]

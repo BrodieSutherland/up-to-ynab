@@ -2,6 +2,11 @@ from flask import Flask, request, Response
 import classes
 import helper
 import os
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
@@ -16,7 +21,7 @@ def respond() -> Response:
         eventPayload = classes.UpWebhookEvent(request.json["data"])
         outcome = helper.handleWebhookEvent(eventPayload)
 
-        app.logger.info(outcome)
+        logger.info(outcome)
 
         return Response(status=200)
     elif request.method == "GET":
@@ -25,11 +30,11 @@ def respond() -> Response:
         return Response(status=200)
 
 if __name__ == "__main__":
-    app.logger.info("Starting server...")
+    logger.info("Starting server...")
     helper.setAllYNABDatabases()
     if not helper.pingWebhook():
         helper.createUpWebhook()
-    app.logger.info("Ready for transactions!")
+    logger.info("Ready for transactions!")
     if helper.getEnvs("DEBUG_MODE") == "True":
-        app.logger.info("DEBUG MODE ENABLED")
-    app.run(host="0.0.0.0", port=os.environ.get("PORT"))
+        logger.info("DEBUG MODE ENABLED")
+    app.run(host="0.0.0.0", port=os.environ.get("PORT"), debug=True)
