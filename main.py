@@ -1,37 +1,31 @@
+import os
 from flask import Flask, request, Response
 import classes
 import helper
-import os
 
 app = Flask(__name__)
 
 
-# ---------------
-# ROUTES
-# ---------------
-# Endpoint to handle updates from Up
-@app.route("/", methods=["POST", "GET"])
-def respond() -> Response:
-    if request.method == "POST":
-        """Handles any webhook event from Up"""
-        eventPayload = classes.UpWebhookEvent(request.json["data"])
-        outcome = helper.handleWebhookEvent(eventPayload)
+@app.route("/", methods=["POST"])
+def handle_up_webhook() -> Response:
+    """
+    Handles any webhook event from Up.
+    """
+    event_payload = classes.UpWebhookEvent(request.json["data"])
+    outcome = helper.handleWebhookEvent(event_payload)
 
-        print(outcome)
+    print(outcome)
 
-        return Response(status=200)
-    elif request.method == "GET":
-        """Refreshes databases"""
-        helper.refresh()
-        return Response(status=200)
+    return Response(status=200)
 
 
-# # Endpoint to refresh peyee databases
-# @app.route("/", methods=["GET"])
-# def refresh() -> Response:
-#     """Refreshes databases"""
-#     helper.refresh()
-#     return Response(status=200)
+@app.route("/", methods=["GET"])
+def refresh_databases() -> Response:
+    """
+    Refreshes databases.
+    """
+    helper.refresh()
+    return Response(status=200)
 
 
 if __name__ == "__main__":
