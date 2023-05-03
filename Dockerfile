@@ -27,5 +27,4 @@ RUN adduser -u 5678 --disabled-password --gecos "" appuser && chown -R appuser /
 USER appuser
 
 # Start Gunicorn server
-CMD ["gunicorn", "main:app", "-b", "0.0.0.0:5001", "-w", "4"]
-
+CMD ["gunicorn", "main:app", "-b", "0.0.0.0:5001", "-w", "4", "--capture-output"]
