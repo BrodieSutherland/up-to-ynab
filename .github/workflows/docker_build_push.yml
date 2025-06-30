@@ -5,6 +5,9 @@ on:
     branches:
       - main # Change this to the name of your default branch, if different
 
+permissions:
+  contents: read
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
