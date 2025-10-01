@@ -1,59 +1,209 @@
-# Up to YNAB Automatic Transaction Forwarder
+# UP to YNAB Transaction Sync
 
-If you use YNAB and Up this will help save your life by automatically importing transactions direct from Up into your budget.
+Automatically sync transactions from [Up Bank](https://up.com.au/) to [YNAB](https://www.youneedabudget.com/) using webhooks and APIs.
 
-## What's all this then
+[![CI](https://github.com/brodie/up-to-ynab/actions/workflows/ci.yml/badge.svg)](https://github.com/brodie/up-to-ynab/actions/workflows/ci.yml)
+[![Docker](https://img.shields.io/docker/v/username/up-to-ynab?label=docker)](https://hub.docker.com/r/username/up-to-ynab)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
 
-I'm very lazy, and frequently forget to track my transactions manually in my budget, making it kinda useless, and making the job when I eventually get around to it even bigger the more I wait. This machine has saved my life
+## Features
 
-## Environment Variables
+- 🔄 **Real-time sync** via Up Bank webhooks
+- 🏷️ **Smart categorization** based on historical payee mappings
+- 🚫 **Transfer filtering** to avoid duplicate internal transfers
+- 📊 **Health monitoring** with built-in endpoints
+- 🐳 **Docker ready** with production and development configurations
+- 🧪 **Comprehensive testing** with >90% coverage
+- 🔒 **Security focused** with non-root containers and vulnerability scanning
 
-| Variable Name  | Description                                                                                                                                          |
-| -------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **budgetId**   | This is the budget key in YNAB for your budget, you SHOULD be able to use `last-used`, but I don't recommend (it'll break when you swap budgets)     |
-| **PORT**       | Port value to run the app off, just use 5000 (works for me)                                                                                          |
-| **upKey**      | Your Up API Personal Access token (grab one [here](https://api.up.com.au/getting_started))                                                           |
-| **ynabKey**    | Your YNAB Access token (find it [here](https://app.youneedabudget.com/settings/developer))                                                           |
-| **BASE_URL**   | The base URL of wherever you're hosting it, if you're using heroku it will looks something like `https://<YOUR HEROKU APP NAME HERE>.herokuapp.com/` |
-| **DEBUG_MODE** | Set this to `False` unless something's gone sideways and you want to investigate it                                                                  |
+## Quick Start
 
-## Cheers boss, how do I use the thing
+### Prerequisites
 
-First things first, we need to do some prep work. In order to match your Up Accounts with a correlating YNAB Account, we need to have an account in YNAB named "Spending", as well as an account for each Savings account in Up **WITH THE SAME NAME**, emojis and all. For example:
+- Up Bank API token ([get one here](https://developer.up.com.au/))
+- YNAB Personal Access Token ([get one here](https://app.youneedabudget.com/settings/developer))
+- YNAB Budget ID and Account ID
+- Public webhook URL (for receiving Up Bank notifications)
 
-| Up Account Name                | Required YNAB Account Name |
-| ------------------------------ | :------------------------: |
-| **Main transactional Account** |        **Spending**        |
-| **Savings 1**                  |       **Savings 1**        |
-| **😀 Savings 2**               |      **😀 Savings 2**      |
+### Docker Deployment (Recommended)
 
-To actually use it, there's 3 steps:
+1. **Clone and setup:**
+   ```bash
+   git clone https://github.com/brodie/up-to-ynab.git
+   cd up-to-ynab
+   cp .env.example .env
+   ```
 
-1. `git clone https://github.com/BrodieSutherland/up-to-ynab.git`
-2. Edit `.env` with the values as shown under "Environment Variables" above
-3. `docker-compose up -d`
+2. **Configure environment variables in `.env`:**
+   ```bash
+   UP_API_TOKEN=your_up_api_token_here
+   YNAB_API_TOKEN=your_ynab_token_here
+   YNAB_BUDGET_ID=your_budget_id_here
+   YNAB_ACCOUNT_ID=your_account_id_here
+   WEBHOOK_URL=https://your-domain.com/webhook
+   ```
 
-To reset your databases you can either try hitting your `BASE_URL:PORT` with a GET request, or just restart the service (`docker-compose down && docker-compose up -d`)
+   **⚠️ Important:** All API tokens are required for the application to function properly. The application will show configuration errors if tokens are missing or invalid.
 
-<details>
-<summary>Legacy Heroku Deploy Instructions</summary>
+3. **Start production environment:**
+   ```bash
+   ./scripts/start-prod.sh
+   ```
 
-### I have not tested this/used heroku in a long time, and I cannot confirm this works, use at your own peril!
+The application will be available at `http://localhost:5001`.
 
-Now that's all done, click this fancy lil button down here and deploy your own version of the app!
+### Development Setup
 
-[![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/BrodieSutherland/up-to-ynab)
+1. **Start development environment:**
+   ```bash
+   ./scripts/start-dev.sh
+   ```
 
-Once deployed and correctly configured, it will transfer any transactions across to your YNAB budget. If you're unlike me, and have been putting your payees in correctly, then this will associate the payees with those same categories. Any payees it doesnt match will require a category to be "complete".
+2. **Run tests:**
+   ```bash
+   ./scripts/run-tests.sh
+   ```
 
-To reload the payee to category database, you will need to restart the dynos (I'm looking into making this system better, let me know if you think of something). Personally I recommend letting it run for a month or two, and then resetting the dynos, so you get a good view of your new common payees.
+## Configuration
 
-</details>
+### Environment Variables
 
-## FAQ
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `UP_API_TOKEN` | ✅ | - | Up Bank API token |
+| `YNAB_API_TOKEN` | ✅ | - | YNAB Personal Access Token |
+| `YNAB_BUDGET_ID` | ✅ | - | YNAB Budget ID |
+| `YNAB_ACCOUNT_ID` | ✅ | - | YNAB Account ID to sync to |
+| `WEBHOOK_URL` | ❌ | - | Public URL for Up Bank webhooks |
+| `PORT` | ❌ | 5001 | Server port |
+| `DEBUG_MODE` | ❌ | false | Enable debug logging |
+| `DATABASE_URL` | ❌ | sqlite:///./up_to_ynab.db | Database connection URL |
 
-### Q: Are there any transaction types this doesnt handle?
+### Transfer Filtering
 
-Glad you asked! Currently it doesn't support split payees, or payees with multiple categories. Also, when a payment value is changed after the initial creation (like when your Uber charge doesn't match the estimate) the initial transaction value will be entered, but not updated.
+The following transaction descriptions are automatically filtered out as internal transfers:
+- "Transfer to "
+- "Cover to "
+- "Quick save transfer to "
+- "Forward to "
 
-### I will populate this more, I swear
+## API Endpoints
+
+- `GET /health` - Health check endpoint
+- `POST /webhook` - Up Bank webhook receiver
+- `GET /refresh` - Manually refresh category mappings
+- `GET /docs` - Interactive API documentation
+
+## Architecture
+
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│   Up Bank   │───▶│  Webhook    │───▶│    YNAB     │
+│             │    │  Processor  │    │             │
+└─────────────┘    └─────────────┘    └─────────────┘
+                          │
+                          ▼
+                   ┌─────────────┐
+                   │  Category   │
+                   │  Database   │
+                   └─────────────┘
+```
+
+## Deployment Options
+
+### Docker Compose (Production)
+```bash
+docker-compose up -d
+```
+
+### Docker Compose (Development)
+```bash
+docker-compose -f docker-compose.dev.yml up -d
+```
+
+### Manual Installation
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run application
+python -m uvicorn app:app --host 0.0.0.0 --port 5001
+```
+
+## Monitoring
+
+### Health Checks
+- **Endpoint:** `GET /health`
+- **Response:** JSON with service status and version
+
+### Logging
+- Structured JSON logging in production
+- Colored console logging in development
+- Configurable log levels via `DEBUG_MODE`
+
+### Docker Health Checks
+Built-in Docker health checks monitor service availability every 30 seconds.
+
+## Development
+
+### Project Structure
+```
+refactor/
+├── app.py                 # FastAPI application
+├── models/               # Pydantic data models
+├── services/            # Business logic services
+├── database/           # Database models and connection
+├── utils/             # Configuration and utilities
+├── tests/            # Comprehensive test suite
+└── scripts/         # Deployment and utility scripts
+```
+
+### Testing
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=. --cov-report=html
+
+# Run specific test file
+pytest tests/test_transaction_service.py -v
+```
+
+### Code Quality
+```bash
+# Format code
+black .
+
+# Sort imports
+isort .
+
+# Lint code
+flake8 .
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## Security
+
+- Non-root Docker containers
+- Automated vulnerability scanning with Trivy
+- Secure API token handling
+- Input validation with Pydantic
+- No secrets in logs or error messages
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+- 📖 [Documentation](https://github.com/brodie/up-to-ynab/wiki)
+- 🐛 [Issue Tracker](https://github.com/brodie/up-to-ynab/issues)
+- 💬 [Discussions](https://github.com/brodie/up-to-ynab/discussions)

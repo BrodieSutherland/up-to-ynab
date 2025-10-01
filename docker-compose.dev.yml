@@ -1,17 +1,17 @@
 version: '3.8'
 
 services:
-  up-to-ynab:
+  up-to-ynab-dev:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: up-to-ynab
+      dockerfile: Dockerfile.dev
+    container_name: up-to-ynab-dev
     restart: unless-stopped
     ports:
       - "5001:5001"
     environment:
       - PORT=5001
-      - DEBUG_MODE=false
+      - DEBUG_MODE=true
       - UP_API_TOKEN=${UP_API_TOKEN}
       - UP_BASE_URL=https://api.up.com.au/api/v1/
       - WEBHOOK_URL=${WEBHOOK_URL}
@@ -21,16 +21,11 @@ services:
       - YNAB_BASE_URL=https://api.youneedabudget.com/v1/
       - DATABASE_URL=sqlite+aiosqlite:///./data/up_to_ynab.db
     volumes:
+      - .:/app
       - ./data:/app/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
     networks:
-      - up-to-ynab
+      - up-to-ynab-dev
 
 networks:
-  up-to-ynab:
+  up-to-ynab-dev:
     driver: bridge
