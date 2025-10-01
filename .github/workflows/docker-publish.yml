@@ -30,7 +30,7 @@ jobs:
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ secrets.DOCKER_HUB_USERNAME }}
-        password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+        password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
     - name: Extract metadata
       id: meta
@@ -62,7 +62,7 @@ jobs:
       uses: peter-evans/dockerhub-description@v3
       with:
         username: ${{ secrets.DOCKER_HUB_USERNAME }}
-        password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
+        password: ${{ secrets.DOCKER_HUB_TOKEN }}
         repository: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}
         short-description: "Sync transactions from Up Bank to YNAB"
         readme-filepath: ./README.md
