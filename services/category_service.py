@@ -10,7 +10,6 @@ from database.models import PayeeCategoryMapping, ProcessedTransaction
 from models.ynab_models import YnabCategory, YnabPayee
 from services.ynab_service import YnabService
 
-
 logger = structlog.get_logger()
 
 
@@ -35,7 +34,7 @@ class CategoryService:
             logger.info(
                 "Retrieved YNAB data for sync",
                 categories_count=len(categories),
-                payees_count=len(payees)
+                payees_count=len(payees),
             )
 
             # TODO: Implement actual transaction history analysis
@@ -46,31 +45,38 @@ class CategoryService:
             logger.info("Category sync completed successfully")
 
         except Exception as e:
-            logger.error("Failed to sync categories from YNAB", error=str(e), exc_info=e)
+            logger.error(
+                "Failed to sync categories from YNAB", error=str(e), exc_info=e
+            )
             raise
 
     async def get_payee_category_mappings(self) -> Dict[str, str]:
         """Get all payee to category ID mappings."""
         try:
             async with db_manager.get_session() as session:
-                stmt = select(PayeeCategoryMapping).where(PayeeCategoryMapping.is_active == True)
+                stmt = select(PayeeCategoryMapping).where(
+                    PayeeCategoryMapping.is_active == True
+                )
                 result = await session.execute(stmt)
                 mappings = result.scalars().all()
 
-                mapping_dict = {mapping.payee_name: mapping.category_id for mapping in mappings}
+                mapping_dict = {
+                    mapping.payee_name: mapping.category_id for mapping in mappings
+                }
 
-                logger.info("Retrieved payee category mappings", count=len(mapping_dict))
+                logger.info(
+                    "Retrieved payee category mappings", count=len(mapping_dict)
+                )
                 return mapping_dict
 
         except Exception as e:
-            logger.error("Failed to retrieve payee category mappings", error=str(e), exc_info=e)
+            logger.error(
+                "Failed to retrieve payee category mappings", error=str(e), exc_info=e
+            )
             return {}
 
     async def update_payee_category_mapping(
-        self,
-        payee_name: str,
-        category_id: str,
-        category_name: str
+        self, payee_name: str, category_id: str, category_name: str
     ) -> None:
         """Update or create a payee-category mapping."""
         try:
@@ -93,21 +99,21 @@ class CategoryService:
                         "Updated payee category mapping",
                         payee=payee_name,
                         category=category_name,
-                        transaction_count=existing_mapping.transaction_count
+                        transaction_count=existing_mapping.transaction_count,
                     )
                 else:
                     # Create new mapping
                     new_mapping = PayeeCategoryMapping(
                         payee_name=payee_name,
                         category_id=category_id,
-                        category_name=category_name
+                        category_name=category_name,
                     )
                     session.add(new_mapping)
 
                     logger.info(
                         "Created new payee category mapping",
                         payee=payee_name,
-                        category=category_name
+                        category=category_name,
                     )
 
                 await session.commit()
@@ -118,7 +124,7 @@ class CategoryService:
                 payee=payee_name,
                 category=category_name,
                 error=str(e),
-                exc_info=e
+                exc_info=e,
             )
             raise
 
@@ -130,7 +136,7 @@ class CategoryService:
         amount: int,
         transaction_date: str,
         status: str = "processed",
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
     ) -> None:
         """Record a processed transaction to avoid duplicates."""
         try:
@@ -142,7 +148,7 @@ class CategoryService:
                     amount=amount,
                     transaction_date=transaction_date,
                     status=status,
-                    error_message=error_message
+                    error_message=error_message,
                 )
                 session.add(processed_tx)
                 await session.commit()
@@ -151,7 +157,7 @@ class CategoryService:
                     "Recorded processed transaction",
                     up_transaction_id=up_transaction_id,
                     payee=payee_name,
-                    status=status
+                    status=status,
                 )
 
         except Exception as e:
@@ -159,7 +165,7 @@ class CategoryService:
                 "Failed to record processed transaction",
                 up_transaction_id=up_transaction_id,
                 error=str(e),
-                exc_info=e
+                exc_info=e,
             )
             # Don't raise - this is not critical for main workflow
 
@@ -180,7 +186,7 @@ class CategoryService:
                 "Failed to check if transaction is processed",
                 up_transaction_id=up_transaction_id,
                 error=str(e),
-                exc_info=e
+                exc_info=e,
             )
             # Err on the side of caution - assume not processed
             return False

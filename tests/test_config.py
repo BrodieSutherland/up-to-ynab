@@ -1,6 +1,7 @@
 import os
-import pytest
 from unittest.mock import patch
+
+import pytest
 from pydantic import ValidationError
 
 from utils.config import Settings, get_settings
@@ -15,7 +16,7 @@ class TestSettings:
             up_api_token="test_up_token",
             ynab_api_token="test_ynab_token",
             ynab_budget_id="test_budget_id",
-            ynab_account_id="test_account_id"
+            ynab_account_id="test_account_id",
         )
 
         assert settings.up_api_token == "test_up_token"
@@ -36,7 +37,7 @@ class TestSettings:
             up_api_token="test_up_token",
             ynab_api_token="test_ynab_token",
             ynab_budget_id="test_budget_id",
-            ynab_account_id="test_account_id"
+            ynab_account_id="test_account_id",
         )
 
         expected_strings = [
@@ -63,7 +64,7 @@ class TestSettings:
             ynab_account_id="test_account_id",
             ynab_base_url="https://custom.ynab.api/v1/",
             database_url="postgresql://custom:db@localhost/test",
-            internal_transfer_strings=custom_transfer_strings
+            internal_transfer_strings=custom_transfer_strings,
         )
 
         assert settings.port == 8080
@@ -82,14 +83,17 @@ class TestSettings:
         with pytest.raises(ValidationError):
             Settings(up_api_token="test")  # Missing other required fields
 
-    @patch.dict(os.environ, {
-        'UP_API_TOKEN': 'env_up_token',
-        'YNAB_API_TOKEN': 'env_ynab_token',
-        'YNAB_BUDGET_ID': 'env_budget_id',
-        'YNAB_ACCOUNT_ID': 'env_account_id',
-        'PORT': '9000',
-        'DEBUG_MODE': 'true'
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "UP_API_TOKEN": "env_up_token",
+            "YNAB_API_TOKEN": "env_ynab_token",
+            "YNAB_BUDGET_ID": "env_budget_id",
+            "YNAB_ACCOUNT_ID": "env_account_id",
+            "PORT": "9000",
+            "DEBUG_MODE": "true",
+        },
+    )
     def test_settings_from_environment(self):
         """Test settings loaded from environment variables."""
         settings = Settings()
@@ -101,16 +105,19 @@ class TestSettings:
         assert settings.port == 9000
         assert settings.debug_mode is True
 
-    @patch.dict(os.environ, {
-        'UP_API_TOKEN': 'env_up_token',
-        'YNAB_API_TOKEN': 'env_ynab_token',
-        'YNAB_BUDGET_ID': 'env_budget_id',
-        'YNAB_ACCOUNT_ID': 'env_account_id'
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "UP_API_TOKEN": "env_up_token",
+            "YNAB_API_TOKEN": "env_ynab_token",
+            "YNAB_BUDGET_ID": "env_budget_id",
+            "YNAB_ACCOUNT_ID": "env_account_id",
+        },
+    )
     def test_settings_case_insensitive(self):
         """Test that environment variables are case insensitive."""
         # This tests the case_sensitive=False setting in model_config
-        with patch.dict(os.environ, {'up_api_token': 'lowercase_token'}, clear=False):
+        with patch.dict(os.environ, {"up_api_token": "lowercase_token"}, clear=False):
             settings = Settings()
             # The lowercase version should be found (case_sensitive=False)
             assert settings.up_api_token == "lowercase_token"
@@ -126,12 +133,15 @@ class TestSettings:
         # Should be the same instance due to lru_cache
         assert settings1 is settings2
 
-    @patch.dict(os.environ, {
-        'UP_API_TOKEN': 'test_token',
-        'YNAB_API_TOKEN': 'test_token',
-        'YNAB_BUDGET_ID': 'test_budget',
-        'YNAB_ACCOUNT_ID': 'test_account'
-    })
+    @patch.dict(
+        os.environ,
+        {
+            "UP_API_TOKEN": "test_token",
+            "YNAB_API_TOKEN": "test_token",
+            "YNAB_BUDGET_ID": "test_budget",
+            "YNAB_ACCOUNT_ID": "test_account",
+        },
+    )
     def test_settings_model_config(self):
         """Test settings model configuration."""
         settings = Settings()
@@ -141,9 +151,17 @@ class TestSettings:
 
         # Should contain expected fields
         expected_fields = {
-            'port', 'debug_mode', 'up_api_token', 'up_base_url', 'webhook_url',
-            'ynab_api_token', 'ynab_budget_id', 'ynab_account_id', 'ynab_base_url',
-            'database_url', 'internal_transfer_strings'
+            "port",
+            "debug_mode",
+            "up_api_token",
+            "up_base_url",
+            "webhook_url",
+            "ynab_api_token",
+            "ynab_budget_id",
+            "ynab_account_id",
+            "ynab_base_url",
+            "database_url",
+            "internal_transfer_strings",
         }
 
         for field in expected_fields:
@@ -153,9 +171,9 @@ class TestSettings:
         """Test that settings fields have proper descriptions."""
         # This tests the Field descriptions are properly set
         schema = Settings.model_json_schema()
-        properties = schema.get('properties', {})
+        properties = schema.get("properties", {})
 
         # Check a few key fields have descriptions
-        assert 'description' in properties.get('port', {})
-        assert 'description' in properties.get('up_api_token', {})
-        assert 'description' in properties.get('ynab_api_token', {})
+        assert "description" in properties.get("port", {})
+        assert "description" in properties.get("up_api_token", {})
+        assert "description" in properties.get("ynab_api_token", {})

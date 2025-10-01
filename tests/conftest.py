@@ -6,14 +6,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
 from app import create_app
 from database.connection import db_manager
 from database.models import Base
 from utils.config import Settings
-
 
 # Test database URL
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -46,7 +45,7 @@ def test_settings() -> Settings:
             "Cover to ",
             "Quick save transfer to ",
             "Forward to ",
-        ]
+        ],
     )
 
 
@@ -114,26 +113,21 @@ def sample_up_transaction_data():
                 "amount": {
                     "currencyCode": "AUD",
                     "value": "-12.50",
-                    "valueInBaseUnits": -1250
+                    "valueInBaseUnits": -1250,
                 },
                 "foreignAmount": None,
                 "currencyConversionFee": None,
                 "settledAt": "2024-01-01T12:00:00+00:00",
-                "createdAt": "2024-01-01T12:00:00+00:00"
+                "createdAt": "2024-01-01T12:00:00+00:00",
             },
             "relationships": {
-                "account": {
-                    "data": {
-                        "type": "accounts",
-                        "id": "test-account-id"
-                    }
-                },
+                "account": {"data": {"type": "accounts", "id": "test-account-id"}},
                 "category": None,
                 "parentCategory": None,
                 "tags": None,
                 "attachment": None,
-                "transferAccount": None
-            }
+                "transferAccount": None,
+            },
         }
     }
 
@@ -147,16 +141,13 @@ def sample_up_webhook_event_data():
             "id": "test-webhook-event-id",
             "attributes": {
                 "eventType": "TRANSACTION_CREATED",
-                "createdAt": "2024-01-01T12:00:00+00:00"
+                "createdAt": "2024-01-01T12:00:00+00:00",
             },
             "relationships": {
                 "transaction": {
-                    "data": {
-                        "type": "transactions",
-                        "id": "test-transaction-id"
-                    }
+                    "data": {"type": "transactions", "id": "test-transaction-id"}
                 }
-            }
+            },
         }
     }
 
@@ -184,7 +175,7 @@ def sample_ynab_transaction_response():
                 "import_payee_name": "Test Merchant",
                 "import_payee_name_original": None,
                 "debt_transaction_type": None,
-                "deleted": False
+                "deleted": False,
             }
         }
     }
@@ -201,9 +192,7 @@ def sample_ynab_budget_data():
                 "last_modified_on": "2024-01-01T12:00:00+00:00",
                 "first_month": "2024-01-01",
                 "last_month": "2024-12-01",
-                "date_format": {
-                    "format": "DD/MM/YYYY"
-                },
+                "date_format": {"format": "DD/MM/YYYY"},
                 "currency_format": {
                     "iso_code": "AUD",
                     "example_format": "123,456.78",
@@ -212,7 +201,7 @@ def sample_ynab_budget_data():
                     "symbol_first": True,
                     "group_separator": ",",
                     "currency_symbol": "$",
-                    "display_symbol": True
+                    "display_symbol": True,
                 },
                 "accounts": [],
                 "payees": [],
@@ -244,11 +233,11 @@ def sample_ynab_budget_data():
                                 "goal_under_funded": None,
                                 "goal_overall_funded": None,
                                 "goal_overall_left": None,
-                                "deleted": False
+                                "deleted": False,
                             }
-                        ]
+                        ],
                     }
-                ]
+                ],
             }
         }
     }

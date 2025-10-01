@@ -1,14 +1,20 @@
-import pytest
 from datetime import datetime
 from decimal import Decimal
 
+import pytest
+
 from models.up_models import (
-    UpWebhookEvent, UpTransaction, UpMoney, UpTransactionAttributes,
-    UpTransactionRelationships
+    UpMoney,
+    UpTransaction,
+    UpTransactionAttributes,
+    UpTransactionRelationships,
+    UpWebhookEvent,
 )
 from models.ynab_models import (
-    YnabTransactionDetail, YnabTransactionRequest, YnabCategory,
-    YnabTransactionResponse
+    YnabCategory,
+    YnabTransactionDetail,
+    YnabTransactionRequest,
+    YnabTransactionResponse,
 )
 
 
@@ -31,9 +37,9 @@ class TestUpModels:
                 "id": "test-event-id",
                 "attributes": {
                     "eventType": "PING",
-                    "createdAt": "2024-01-01T12:00:00+00:00"
+                    "createdAt": "2024-01-01T12:00:00+00:00",
                 },
-                "relationships": {}
+                "relationships": {},
             }
         }
 
@@ -46,7 +52,7 @@ class TestUpModels:
         money_data = {
             "currencyCode": "AUD",
             "value": "-12.50",
-            "valueInBaseUnits": -1250
+            "valueInBaseUnits": -1250,
         }
 
         money = UpMoney(**money_data)
@@ -65,7 +71,9 @@ class TestUpModels:
         assert transaction.amount_milliunits == -12500  # -1250 * 10
         assert transaction.date == "2024-01-01"
 
-    def test_up_transaction_internal_transfer_detection(self, sample_up_transaction_data):
+    def test_up_transaction_internal_transfer_detection(
+        self, sample_up_transaction_data
+    ):
         """Test internal transfer detection in UpTransaction."""
         # Modify transaction to be internal transfer
         transaction_data = sample_up_transaction_data["data"].copy()
@@ -107,10 +115,10 @@ class TestUpModels:
             "amount": {
                 "currencyCode": "AUD",
                 "value": "-12.50",
-                "valueInBaseUnits": -1250
+                "valueInBaseUnits": -1250,
             },
             "settledAt": "2024-01-01T12:00:00Z",  # Z format
-            "createdAt": "2024-01-01T12:00:00+00:00"  # +00:00 format
+            "createdAt": "2024-01-01T12:00:00+00:00",  # +00:00 format
         }
 
         attrs = UpTransactionAttributes(**attrs_data)
@@ -133,7 +141,7 @@ class TestYnabModels:
             memo="Test transaction",
             amount=-12500,
             date="2024-01-01",
-            import_id="up_test-transaction-id"
+            import_id="up_test-transaction-id",
         )
 
         assert transaction_detail.account_id == "test-account-id"
@@ -149,7 +157,7 @@ class TestYnabModels:
             account_id="test-account-id",
             payee_name="Test Merchant",
             amount=-12500,
-            date="2024-01-01"
+            date="2024-01-01",
         )
 
         transaction_request = YnabTransactionRequest(transaction=transaction_detail)
@@ -178,7 +186,7 @@ class TestYnabModels:
             "budgeted": 10000,
             "activity": -5000,
             "balance": 5000,
-            "deleted": False
+            "deleted": False,
         }
 
         category = YnabCategory(**category_data)
@@ -203,7 +211,7 @@ class TestYnabModels:
             "goal_type": "TB",  # Target Balance
             "goal_target": 100000,  # $1000
             "goal_target_month": "2024-12-01",
-            "deleted": False
+            "deleted": False,
         }
 
         category = YnabCategory(**category_data)
@@ -227,7 +235,7 @@ class TestModelIntegration:
             memo=up_transaction.attributes.raw_text,
             amount=up_transaction.amount_milliunits,
             date=up_transaction.date,
-            import_id=f"up_{up_transaction.id}"
+            import_id=f"up_{up_transaction.id}",
         )
 
         assert ynab_detail.payee_name == "Test Merchant"

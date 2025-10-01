@@ -1,6 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class UpWebhookEventData(BaseModel):
     """Up webhook event data model."""
+
     id: str
     type: str
     attributes: Dict[str, Any]
@@ -35,6 +36,7 @@ class UpWebhookEventData(BaseModel):
 
 class UpWebhookEvent(BaseModel):
     """Up webhook event model."""
+
     data: UpWebhookEventData
 
     class Config:
@@ -45,16 +47,16 @@ class UpWebhookEvent(BaseModel):
                     "id": "01234567-89ab-cdef-0123-456789abcdef",
                     "attributes": {
                         "eventType": "TRANSACTION_CREATED",
-                        "createdAt": "2024-01-15T10:30:00+00:00"
+                        "createdAt": "2024-01-15T10:30:00+00:00",
                     },
                     "relationships": {
                         "transaction": {
                             "data": {
                                 "type": "transactions",
-                                "id": "01234567-89ab-cdef-0123-456789abcdef"
+                                "id": "01234567-89ab-cdef-0123-456789abcdef",
                             }
                         }
-                    }
+                    },
                 }
             }
         }
@@ -62,6 +64,7 @@ class UpWebhookEvent(BaseModel):
 
 class UpMoney(BaseModel):
     """Up money amount model."""
+
     currency_code: str = Field(alias="currencyCode")
     value: str
     value_in_base_units: int = Field(alias="valueInBaseUnits")
@@ -74,6 +77,7 @@ class UpMoney(BaseModel):
 
 class UpAccount(BaseModel):
     """Up account model."""
+
     id: str
     display_name: str = Field(alias="displayName")
     account_type: str = Field(alias="accountType")
@@ -84,6 +88,7 @@ class UpAccount(BaseModel):
 
 class UpCategory(BaseModel):
     """Up category model."""
+
     id: str
     name: str
     colour: Optional[str] = None
@@ -91,6 +96,7 @@ class UpCategory(BaseModel):
 
 class UpTransactionAttributes(BaseModel):
     """Up transaction attributes model."""
+
     status: str
     raw_text: Optional[str] = Field(alias="rawText", default=None)
     description: str
@@ -101,36 +107,48 @@ class UpTransactionAttributes(BaseModel):
     cashback: Optional[Dict[str, Any]] = None
     amount: UpMoney
     foreign_amount: Optional[UpMoney] = Field(alias="foreignAmount", default=None)
-    currency_conversion_fee: Optional[UpMoney] = Field(alias="currencyConversionFee", default=None)
+    currency_conversion_fee: Optional[UpMoney] = Field(
+        alias="currencyConversionFee", default=None
+    )
     settled_at: Optional[datetime] = Field(alias="settledAt", default=None)
     created_at: datetime = Field(alias="createdAt")
     # Additional fields from the actual API response
-    card_purchase_method: Optional[Dict[str, Any]] = Field(alias="cardPurchaseMethod", default=None)
+    card_purchase_method: Optional[Dict[str, Any]] = Field(
+        alias="cardPurchaseMethod", default=None
+    )
     transaction_type: Optional[str] = Field(alias="transactionType", default=None)
     note: Optional[str] = None
-    performing_customer: Optional[Dict[str, Any]] = Field(alias="performingCustomer", default=None)
+    performing_customer: Optional[Dict[str, Any]] = Field(
+        alias="performingCustomer", default=None
+    )
     deep_link_url: Optional[str] = Field(alias="deepLinkURL", default=None)
 
-    @field_validator('settled_at', 'created_at', mode='before')
+    @field_validator("settled_at", "created_at", mode="before")
     @classmethod
     def parse_datetime(cls, v):
         if isinstance(v, str):
-            return datetime.fromisoformat(v.replace('Z', '+00:00'))
+            return datetime.fromisoformat(v.replace("Z", "+00:00"))
         return v
 
 
 class UpTransactionRelationships(BaseModel):
     """Up transaction relationships model."""
+
     account: Dict[str, Any]
     category: Optional[Dict[str, Any]] = None
-    parent_category: Optional[Dict[str, Any]] = Field(alias="parentCategory", default=None)
+    parent_category: Optional[Dict[str, Any]] = Field(
+        alias="parentCategory", default=None
+    )
     tags: Optional[Dict[str, Any]] = None
     attachment: Optional[Dict[str, Any]] = None
-    transfer_account: Optional[Dict[str, Any]] = Field(alias="transferAccount", default=None)
+    transfer_account: Optional[Dict[str, Any]] = Field(
+        alias="transferAccount", default=None
+    )
 
 
 class UpTransaction(BaseModel):
     """Up transaction model."""
+
     id: str
     type: str
     attributes: UpTransactionAttributes
@@ -150,6 +168,7 @@ class UpTransaction(BaseModel):
     def is_internal_transfer(self) -> bool:
         """Check if this is an internal transfer."""
         from utils.config import get_settings
+
         settings = get_settings()
 
         return any(
@@ -166,4 +185,5 @@ class UpTransaction(BaseModel):
 
 class UpTransactionResponse(BaseModel):
     """Up API transaction response model."""
+
     data: UpTransaction

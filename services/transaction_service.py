@@ -4,11 +4,10 @@ import structlog
 
 from models.up_models import UpTransaction, UpWebhookEvent
 from models.ynab_models import YnabTransactionResponse
+from services.category_service import CategoryService
 from services.up_service import UpService
 from services.ynab_service import YnabService
-from services.category_service import CategoryService
 from utils.filters import TransactionFilter
-
 
 logger = structlog.get_logger()
 
@@ -27,7 +26,7 @@ class TransactionService:
         logger.info(
             "Processing webhook event",
             event_type=webhook_event.data.event_type,
-            transaction_id=webhook_event.data.transaction_id
+            transaction_id=webhook_event.data.transaction_id,
         )
 
         # Check if we should process this event
@@ -54,7 +53,7 @@ class TransactionService:
                 amount=0,
                 transaction_date="",
                 status="failed",
-                error_message="Failed to fetch transaction from Up API"
+                error_message="Failed to fetch transaction from Up API",
             )
             return f"Failed to fetch transaction {transaction_id} from Up API"
 
@@ -68,7 +67,7 @@ class TransactionService:
             "Processing Up transaction",
             transaction_id=up_transaction.id,
             payee=up_transaction.payee,
-            amount=up_transaction.attributes.amount.value
+            amount=up_transaction.attributes.amount.value,
         )
 
         try:
@@ -78,7 +77,7 @@ class TransactionService:
                 logger.info(
                     "Transaction filtered out",
                     transaction_id=up_transaction.id,
-                    reason=reason
+                    reason=reason,
                 )
 
                 await self.category_service.record_processed_transaction(
@@ -88,7 +87,7 @@ class TransactionService:
                     amount=up_transaction.amount_milliunits,
                     transaction_date=up_transaction.date,
                     status="skipped",
-                    error_message=reason
+                    error_message=reason,
                 )
 
                 return f"Transaction filtered: {reason}"
@@ -98,14 +97,12 @@ class TransactionService:
 
             # Find category for this payee
             category_id = await self.ynab_service.find_category_for_payee(
-                up_transaction.payee,
-                payee_mappings
+                up_transaction.payee, payee_mappings
             )
 
             # Create YNAB transaction
             ynab_transaction = await self.ynab_service.create_transaction(
-                up_transaction,
-                category_id
+                up_transaction, category_id
             )
 
             if ynab_transaction:
@@ -116,7 +113,7 @@ class TransactionService:
                     payee_name=up_transaction.payee,
                     amount=up_transaction.amount_milliunits,
                     transaction_date=up_transaction.date,
-                    status="processed"
+                    status="processed",
                 )
 
                 logger.info(
@@ -124,7 +121,7 @@ class TransactionService:
                     up_transaction_id=up_transaction.id,
                     ynab_transaction_id=ynab_transaction.id,
                     payee=up_transaction.payee,
-                    category_id=category_id
+                    category_id=category_id,
                 )
 
                 return f"${up_transaction.attributes.amount.value} paid to {up_transaction.payee} at {up_transaction.date}"
@@ -137,7 +134,7 @@ class TransactionService:
                     amount=up_transaction.amount_milliunits,
                     transaction_date=up_transaction.date,
                     status="failed",
-                    error_message="Failed to create YNAB transaction"
+                    error_message="Failed to create YNAB transaction",
                 )
 
                 return f"Failed to create YNAB transaction for {up_transaction.payee}"
@@ -147,7 +144,7 @@ class TransactionService:
                 "Unexpected error processing transaction",
                 transaction_id=up_transaction.id,
                 error=str(e),
-                exc_info=e
+                exc_info=e,
             )
 
             # Record error
@@ -158,7 +155,7 @@ class TransactionService:
                 amount=up_transaction.amount_milliunits,
                 transaction_date=up_transaction.date,
                 status="failed",
-                error_message=str(e)
+                error_message=str(e),
             )
 
             return f"Error processing transaction: {str(e)}"

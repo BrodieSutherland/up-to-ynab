@@ -1,20 +1,19 @@
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
 import httpx
 import structlog
 
+from models.up_models import UpTransaction
 from models.ynab_models import (
+    YnabBudget,
+    YnabCategory,
+    YnabPayee,
     YnabTransactionDetail,
     YnabTransactionRequest,
     YnabTransactionResponse,
-    YnabCategory,
-    YnabPayee,
-    YnabBudget
 )
-from models.up_models import UpTransaction
 from utils.config import get_settings
-from utils.validation import log_validation_error, is_validation_error
-
+from utils.validation import is_validation_error, log_validation_error
 
 logger = structlog.get_logger()
 
@@ -27,7 +26,10 @@ class YnabService:
         self.base_url = self.settings.ynab_base_url.rstrip("/")
 
         # Validate YNAB API token is present
-        if not self.settings.ynab_api_token or self.settings.ynab_api_token.strip() == "":
+        if (
+            not self.settings.ynab_api_token
+            or self.settings.ynab_api_token.strip() == ""
+        ):
             raise ValueError("YNAB API token is required but not provided")
 
         self.headers = {
@@ -35,7 +37,9 @@ class YnabService:
             "Content-Type": "application/json",
         }
 
-    async def create_transaction(self, up_transaction: UpTransaction, category_id: Optional[str] = None) -> Optional[YnabTransactionResponse]:
+    async def create_transaction(
+        self, up_transaction: UpTransaction, category_id: Optional[str] = None
+    ) -> Optional[YnabTransactionResponse]:
         """Create a YNAB transaction from an Up transaction."""
         # Create YNAB transaction detail
         transaction_detail = YnabTransactionDetail(
@@ -45,7 +49,7 @@ class YnabService:
             memo=up_transaction.attributes.raw_text or up_transaction.payee,
             amount=up_transaction.amount_milliunits,
             date=up_transaction.date,
-            import_id=self.create_import_id(up_transaction.id)
+            import_id=self.create_import_id(up_transaction.id),
         )
 
         transaction_request = YnabTransactionRequest(transaction=transaction_detail)
@@ -57,7 +61,7 @@ class YnabService:
                 response = await client.post(
                     url,
                     json=transaction_request.model_dump(by_alias=True),
-                    headers=self.headers
+                    headers=self.headers,
                 )
                 response.raise_for_status()
 
@@ -69,7 +73,7 @@ class YnabService:
                     up_transaction_id=up_transaction.id,
                     ynab_transaction_id=transaction_data["id"],
                     payee=up_transaction.payee,
-                    amount=up_transaction.amount_milliunits
+                    amount=up_transaction.amount_milliunits,
                 )
 
                 return YnabTransactionResponse(**transaction_data)
@@ -80,7 +84,7 @@ class YnabService:
                 up_transaction_id=up_transaction.id,
                 status_code=e.response.status_code,
                 error=str(e),
-                response_text=e.response.text
+                response_text=e.response.text,
             )
             return None
         except Exception as e:
@@ -88,7 +92,7 @@ class YnabService:
                 "Unexpected error creating YNAB transaction",
                 up_transaction_id=up_transaction.id,
                 error=str(e),
-                exc_info=e
+                exc_info=e,
             )
             return None
 
@@ -109,14 +113,16 @@ class YnabService:
 
         except Exception as e:
             if is_validation_error(e):
-                log_validation_error(e, "YNAB budget", budget_id=self.settings.ynab_budget_id)
+                log_validation_error(
+                    e, "YNAB budget", budget_id=self.settings.ynab_budget_id
+                )
                 return None
             elif isinstance(e, httpx.HTTPStatusError):
                 logger.error(
                     "Failed to fetch YNAB budget",
                     budget_id=self.settings.ynab_budget_id,
                     status_code=e.response.status_code,
-                    error=str(e)
+                    error=str(e),
                 )
                 return None
             else:
@@ -124,7 +130,7 @@ class YnabService:
                     "Unexpected error fetching YNAB budget",
                     budget_id=self.settings.ynab_budget_id,
                     error=str(e),
-                    exc_info=e
+                    exc_info=e,
                 )
                 return None
 
@@ -146,13 +152,19 @@ class YnabService:
         logger.info("Retrieved YNAB payees", count=len(budget.payees))
         return budget.payees
 
-    async def find_category_for_payee(self, payee_name: str, payee_category_mappings: Dict[str, str]) -> Optional[str]:
+    async def find_category_for_payee(
+        self, payee_name: str, payee_category_mappings: Dict[str, str]
+    ) -> Optional[str]:
         """Find the appropriate category for a payee based on historical mappings."""
         # Check if we have a stored mapping for this payee
         category_id = payee_category_mappings.get(payee_name)
 
         if category_id:
-            logger.info("Found category mapping for payee", payee=payee_name, category_id=category_id)
+            logger.info(
+                "Found category mapping for payee",
+                payee=payee_name,
+                category_id=category_id,
+            )
             return category_id
 
         logger.info("No category mapping found for payee", payee=payee_name)
@@ -163,7 +175,7 @@ class YnabService:
         import hashlib
 
         # For UUIDs (36 chars), just use the UUID without prefix to stay within limit
-        if len(up_transaction_id) == 36 and '-' in up_transaction_id:
+        if len(up_transaction_id) == 36 and "-" in up_transaction_id:
             return up_transaction_id
 
         # For shorter IDs, add "up_" prefix if it fits

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class YnabTransactionDetail(BaseModel):
     """YNAB transaction detail for creation."""
+
     account_id: str
     payee_name: Optional[str] = None
     category_id: Optional[str] = None
@@ -21,11 +22,13 @@ class YnabTransactionDetail(BaseModel):
 
 class YnabTransactionRequest(BaseModel):
     """YNAB transaction creation request."""
+
     transaction: YnabTransactionDetail
 
 
 class YnabTransactionResponse(BaseModel):
     """YNAB transaction response."""
+
     id: str
     date: str
     amount: int
@@ -48,6 +51,7 @@ class YnabTransactionResponse(BaseModel):
 
 class YnabCategory(BaseModel):
     """YNAB category model."""
+
     id: str
     name: str
     category_group_id: str
@@ -76,6 +80,7 @@ class YnabCategory(BaseModel):
 
 class YnabCategoryGroup(BaseModel):
     """YNAB category group model."""
+
     id: str
     name: str
     hidden: bool
@@ -84,6 +89,7 @@ class YnabCategoryGroup(BaseModel):
 
 class YnabPayee(BaseModel):
     """YNAB payee model."""
+
     id: str
     name: str
     transfer_account_id: Optional[str] = None
@@ -92,6 +98,7 @@ class YnabPayee(BaseModel):
 
 class YnabAccount(BaseModel):
     """YNAB account model."""
+
     id: str
     name: str
     type: str
@@ -114,6 +121,7 @@ class YnabAccount(BaseModel):
 
 class YnabBudget(BaseModel):
     """YNAB budget model."""
+
     id: str
     name: str
     last_modified_on: datetime

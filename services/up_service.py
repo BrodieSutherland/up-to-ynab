@@ -6,7 +6,6 @@ import structlog
 from models.up_models import UpTransaction, UpTransactionResponse, UpWebhookEvent
 from utils.config import get_settings
 
-
 logger = structlog.get_logger()
 
 
@@ -46,7 +45,7 @@ class UpService:
                 "Failed to fetch Up transaction",
                 transaction_id=transaction_id,
                 status_code=e.response.status_code,
-                error=str(e)
+                error=str(e),
             )
             return None
         except Exception as e:
@@ -54,7 +53,7 @@ class UpService:
                 "Unexpected error fetching Up transaction",
                 transaction_id=transaction_id,
                 error=str(e),
-                exc_info=e
+                exc_info=e,
             )
             return None
 
@@ -65,7 +64,7 @@ class UpService:
             "data": {
                 "attributes": {
                     "url": webhook_url,
-                    "description": "UP to YNAB transaction sync webhook"
+                    "description": "UP to YNAB transaction sync webhook",
                 }
             }
         }
@@ -78,7 +77,11 @@ class UpService:
                 webhook_data = response.json()
                 webhook_id = webhook_data["data"]["id"]
 
-                logger.info("Webhook created successfully", webhook_id=webhook_id, url=webhook_url)
+                logger.info(
+                    "Webhook created successfully",
+                    webhook_id=webhook_id,
+                    url=webhook_url,
+                )
                 return True
 
         except httpx.HTTPStatusError as e:
@@ -86,7 +89,7 @@ class UpService:
                 "Failed to create webhook",
                 url=webhook_url,
                 status_code=e.response.status_code,
-                error=str(e)
+                error=str(e),
             )
             return False
         except Exception as e:
@@ -94,7 +97,7 @@ class UpService:
                 "Unexpected error creating webhook",
                 url=webhook_url,
                 error=str(e),
-                exc_info=e
+                exc_info=e,
             )
             return False
 
@@ -117,15 +120,11 @@ class UpService:
             logger.error(
                 "Failed to list webhooks",
                 status_code=e.response.status_code,
-                error=str(e)
+                error=str(e),
             )
             return []
         except Exception as e:
-            logger.error(
-                "Unexpected error listing webhooks",
-                error=str(e),
-                exc_info=e
-            )
+            logger.error("Unexpected error listing webhooks", error=str(e), exc_info=e)
             return []
 
     async def webhook_exists(self, webhook_url: str) -> bool:
@@ -156,7 +155,10 @@ class UpService:
         """Determine if a webhook event should be processed."""
         # Only process transaction creation events
         if webhook_event.data.event_type != "TRANSACTION_CREATED":
-            logger.debug("Ignoring non-transaction event", event_type=webhook_event.data.event_type)
+            logger.debug(
+                "Ignoring non-transaction event",
+                event_type=webhook_event.data.event_type,
+            )
             return False
 
         # Must have transaction ID

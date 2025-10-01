@@ -1,9 +1,10 @@
 from unittest.mock import AsyncMock, patch
-import pytest
-import httpx
 
-from models.ynab_models import YnabBudget, YnabTransactionResponse
+import httpx
+import pytest
+
 from models.up_models import UpTransaction
+from models.ynab_models import YnabBudget, YnabTransactionResponse
 from services.ynab_service import YnabService
 
 
@@ -13,7 +14,7 @@ class TestYnabService:
     @pytest.fixture
     def ynab_service(self, test_settings):
         """Create YnabService instance with test settings."""
-        with patch('services.ynab_service.get_settings', return_value=test_settings):
+        with patch("services.ynab_service.get_settings", return_value=test_settings):
             return YnabService()
 
     @pytest.fixture
@@ -22,14 +23,18 @@ class TestYnabService:
         return UpTransaction(**sample_up_transaction_data["data"])
 
     @pytest.mark.asyncio
-    async def test_create_transaction_success(self, ynab_service, sample_up_transaction, sample_ynab_transaction_response):
+    async def test_create_transaction_success(
+        self, ynab_service, sample_up_transaction, sample_ynab_transaction_response
+    ):
         """Test successful transaction creation in YNAB."""
         mock_response = AsyncMock()
         mock_response.json.return_value = sample_ynab_transaction_response
         mock_response.raise_for_status.return_value = None
 
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_client.return_value.__aenter__.return_value.post.return_value = mock_response
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.post.return_value = (
+                mock_response
+            )
 
             result = await ynab_service.create_transaction(sample_up_transaction)
 
@@ -38,7 +43,9 @@ class TestYnabService:
             assert result.import_id == "up_test-transaction-id"
 
     @pytest.mark.asyncio
-    async def test_create_transaction_with_category(self, ynab_service, sample_up_transaction, sample_ynab_transaction_response):
+    async def test_create_transaction_with_category(
+        self, ynab_service, sample_up_transaction, sample_ynab_transaction_response
+    ):
         """Test transaction creation with category assignment."""
         # Modify response to include category
         response_data = sample_ynab_transaction_response.copy()
@@ -48,19 +55,22 @@ class TestYnabService:
         mock_response.json.return_value = response_data
         mock_response.raise_for_status.return_value = None
 
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_client.return_value.__aenter__.return_value.post.return_value = mock_response
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.post.return_value = (
+                mock_response
+            )
 
             result = await ynab_service.create_transaction(
-                sample_up_transaction,
-                category_id="test-category-id"
+                sample_up_transaction, category_id="test-category-id"
             )
 
             assert result is not None
             assert result.category_id == "test-category-id"
 
     @pytest.mark.asyncio
-    async def test_create_transaction_http_error(self, ynab_service, sample_up_transaction):
+    async def test_create_transaction_http_error(
+        self, ynab_service, sample_up_transaction
+    ):
         """Test transaction creation with HTTP error."""
         mock_response = AsyncMock()
         mock_response.status_code = 400
@@ -69,8 +79,10 @@ class TestYnabService:
             "Bad Request", request=AsyncMock(), response=mock_response
         )
 
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_client.return_value.__aenter__.return_value.post.return_value = mock_response
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.post.return_value = (
+                mock_response
+            )
 
             result = await ynab_service.create_transaction(sample_up_transaction)
 
@@ -83,8 +95,10 @@ class TestYnabService:
         mock_response.json.return_value = sample_ynab_budget_data
         mock_response.raise_for_status.return_value = None
 
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_client.return_value.__aenter__.return_value.get.return_value = mock_response
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get.return_value = (
+                mock_response
+            )
 
             budget = await ynab_service.get_budget()
 
@@ -102,8 +116,10 @@ class TestYnabService:
             "Not Found", request=AsyncMock(), response=mock_response
         )
 
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_client.return_value.__aenter__.return_value.get.return_value = mock_response
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get.return_value = (
+                mock_response
+            )
 
             budget = await ynab_service.get_budget()
 
@@ -116,8 +132,10 @@ class TestYnabService:
         mock_response.json.return_value = sample_ynab_budget_data
         mock_response.raise_for_status.return_value = None
 
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_client.return_value.__aenter__.return_value.get.return_value = mock_response
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get.return_value = (
+                mock_response
+            )
 
             categories = await ynab_service.get_categories()
 
@@ -134,8 +152,10 @@ class TestYnabService:
             "Not Found", request=AsyncMock(), response=mock_response
         )
 
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_client.return_value.__aenter__.return_value.get.return_value = mock_response
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get.return_value = (
+                mock_response
+            )
 
             categories = await ynab_service.get_categories()
 
@@ -151,7 +171,7 @@ class TestYnabService:
                 "id": "test-payee-id",
                 "name": "Test Payee",
                 "transfer_account_id": None,
-                "deleted": False
+                "deleted": False,
             }
         ]
 
@@ -159,8 +179,10 @@ class TestYnabService:
         mock_response.json.return_value = budget_data
         mock_response.raise_for_status.return_value = None
 
-        with patch('httpx.AsyncClient') as mock_client:
-            mock_client.return_value.__aenter__.return_value.get.return_value = mock_response
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_client.return_value.__aenter__.return_value.get.return_value = (
+                mock_response
+            )
 
             payees = await ynab_service.get_payees()
 
@@ -173,7 +195,9 @@ class TestYnabService:
         """Test finding category for payee - mapping exists."""
         payee_mappings = {"Test Merchant": "test-category-id"}
 
-        category_id = await ynab_service.find_category_for_payee("Test Merchant", payee_mappings)
+        category_id = await ynab_service.find_category_for_payee(
+            "Test Merchant", payee_mappings
+        )
 
         assert category_id == "test-category-id"
 
@@ -182,7 +206,9 @@ class TestYnabService:
         """Test finding category for payee - no mapping."""
         payee_mappings = {"Other Merchant": "other-category-id"}
 
-        category_id = await ynab_service.find_category_for_payee("Test Merchant", payee_mappings)
+        category_id = await ynab_service.find_category_for_payee(
+            "Test Merchant", payee_mappings
+        )
 
         assert category_id is None
 

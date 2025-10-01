@@ -1,8 +1,8 @@
 from contextlib import asynccontextmanager
-from typing import Dict, Any
+from typing import Any, Dict
 
 import structlog
-from fastapi import FastAPI, Request, HTTPException, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -13,14 +13,18 @@ from services.transaction_service import TransactionService
 from services.up_service import UpService
 from utils.config import get_settings
 from utils.logging import setup_logging
-from utils.validation import log_validation_error, format_validation_errors, is_validation_error
-
+from utils.validation import (
+    format_validation_errors,
+    is_validation_error,
+    log_validation_error,
+)
 
 logger = structlog.get_logger()
 
 
 class WebhookResponse(BaseModel):
     """Response model for webhook endpoint."""
+
     status: str
     result: str
 
@@ -29,16 +33,13 @@ class WebhookResponse(BaseModel):
             "examples": [
                 {
                     "status": "processed",
-                    "result": "Transaction created successfully in YNAB"
+                    "result": "Transaction created successfully in YNAB",
                 },
                 {
                     "status": "processed",
-                    "result": "Event ignored - not a transaction creation"
+                    "result": "Event ignored - not a transaction creation",
                 },
-                {
-                    "status": "processed",
-                    "result": "Transaction already processed"
-                }
+                {"status": "processed", "result": "Transaction already processed"},
             ]
         }
 
@@ -74,10 +75,14 @@ async def lifespan(app: FastAPI):
             logger.error("Failed to refresh category data on startup", error=str(e))
 
     except ValueError as e:
-        logger.error("Service initialization failed - check your API tokens", error=str(e))
+        logger.error(
+            "Service initialization failed - check your API tokens", error=str(e)
+        )
         # Don't fail startup completely, but services won't work
     except Exception as e:
-        logger.error("Unexpected error during service initialization", error=str(e), exc_info=e)
+        logger.error(
+            "Unexpected error during service initialization", error=str(e), exc_info=e
+        )
 
     logger.info("UP to YNAB application started successfully")
 
@@ -111,7 +116,9 @@ def create_app() -> FastAPI:
 
     # Global exception handler
     @app.exception_handler(Exception)
-    async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    async def global_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
         logger.error(
             "Unhandled exception occurred",
             exc_info=exc,
@@ -127,11 +134,7 @@ def create_app() -> FastAPI:
     @app.get("/health", tags=["health"])
     async def health_check() -> Dict[str, Any]:
         """Health check endpoint for monitoring."""
-        return {
-            "status": "healthy",
-            "service": "up-to-ynab",
-            "version": "2.0.0"
-        }
+        return {"status": "healthy", "service": "up-to-ynab", "version": "2.0.0"}
 
     # Webhook endpoint
     @app.post(
@@ -170,7 +173,7 @@ def create_app() -> FastAPI:
         4. Filter out internal transfers
         5. Map payee to YNAB category using historical data
         6. Create the transaction in YNAB
-        """
+        """,
     )
     async def handle_webhook(webhook_event: UpWebhookEvent) -> WebhookResponse:
         """Handle incoming webhooks from Up Bank."""
@@ -185,8 +188,14 @@ def create_app() -> FastAPI:
                 logger.info("Webhook processed", result=result)
                 return WebhookResponse(status="processed", result=result)
             except ValueError as e:
-                logger.error("Service initialization failed during webhook processing", error=str(e))
-                return WebhookResponse(status="error", result="Service configuration error - check API tokens")
+                logger.error(
+                    "Service initialization failed during webhook processing",
+                    error=str(e),
+                )
+                return WebhookResponse(
+                    status="error",
+                    result="Service configuration error - check API tokens",
+                )
 
         except Exception as exc:
             if is_validation_error(exc):
@@ -194,13 +203,13 @@ def create_app() -> FastAPI:
                 validation_summary = format_validation_errors(exc)
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid webhook payload - {validation_summary}"
+                    detail=f"Invalid webhook payload - {validation_summary}",
                 )
             else:
                 logger.error("Failed to process webhook", exc_info=exc)
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid webhook payload"
+                    detail="Invalid webhook payload",
                 )
 
     # Manual refresh endpoint
@@ -215,14 +224,19 @@ def create_app() -> FastAPI:
                 result = await transaction_service.refresh_data()
                 return {"status": "success", "message": result}
             except ValueError as e:
-                logger.error("Service initialization failed during refresh", error=str(e))
-                return {"status": "error", "message": "Service configuration error - check API tokens"}
+                logger.error(
+                    "Service initialization failed during refresh", error=str(e)
+                )
+                return {
+                    "status": "error",
+                    "message": "Service configuration error - check API tokens",
+                }
 
         except Exception as exc:
             logger.error("Failed to refresh data", exc_info=exc)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to refresh data"
+                detail="Failed to refresh data",
             )
 
     return app

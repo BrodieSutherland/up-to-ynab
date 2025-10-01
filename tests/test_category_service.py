@@ -1,5 +1,6 @@
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from database.models import PayeeCategoryMapping, ProcessedTransaction
@@ -16,15 +17,22 @@ class TestCategoryService:
         return CategoryService()
 
     @pytest.mark.asyncio
-    async def test_sync_categories_from_ynab(self, category_service, sample_ynab_budget_data):
+    async def test_sync_categories_from_ynab(
+        self, category_service, sample_ynab_budget_data
+    ):
         """Test syncing categories from YNAB."""
         # Mock YNAB service methods
-        with patch.object(category_service.ynab_service, 'get_categories') as mock_get_categories, \
-             patch.object(category_service.ynab_service, 'get_payees') as mock_get_payees, \
-             patch('database.connection.db_manager.get_session') as mock_session:
+        with patch.object(
+            category_service.ynab_service, "get_categories"
+        ) as mock_get_categories, patch.object(
+            category_service.ynab_service, "get_payees"
+        ) as mock_get_payees, patch(
+            "database.connection.db_manager.get_session"
+        ) as mock_session:
 
             # Setup mocks
             from models.ynab_models import YnabCategory
+
             mock_categories = [
                 YnabCategory(
                     id="test-category-id",
@@ -33,7 +41,7 @@ class TestCategoryService:
                     budgeted=0,
                     activity=0,
                     balance=0,
-                    deleted=False
+                    deleted=False,
                 )
             ]
             mock_get_categories.return_value = mock_categories
@@ -55,12 +63,12 @@ class TestCategoryService:
         mapping = PayeeCategoryMapping(
             payee_name="Test Merchant",
             category_id="test-category-id",
-            category_name="Test Category"
+            category_name="Test Category",
         )
         test_db_session.add(mapping)
         await test_db_session.commit()
 
-        with patch('database.connection.db_manager.get_session') as mock_session:
+        with patch("database.connection.db_manager.get_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             mappings = await category_service.get_payee_category_mappings()
@@ -69,19 +77,20 @@ class TestCategoryService:
             assert mappings["Test Merchant"] == "test-category-id"
 
     @pytest.mark.asyncio
-    async def test_update_payee_category_mapping_new(self, category_service, test_db_session):
+    async def test_update_payee_category_mapping_new(
+        self, category_service, test_db_session
+    ):
         """Test creating new payee category mapping."""
-        with patch('database.connection.db_manager.get_session') as mock_session:
+        with patch("database.connection.db_manager.get_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             await category_service.update_payee_category_mapping(
-                "New Merchant",
-                "new-category-id",
-                "New Category"
+                "New Merchant", "new-category-id", "New Category"
             )
 
             # Verify mapping was created
             from sqlalchemy import select
+
             stmt = select(PayeeCategoryMapping).where(
                 PayeeCategoryMapping.payee_name == "New Merchant"
             )
@@ -94,29 +103,30 @@ class TestCategoryService:
             assert mapping.transaction_count == 1
 
     @pytest.mark.asyncio
-    async def test_update_payee_category_mapping_existing(self, category_service, test_db_session):
+    async def test_update_payee_category_mapping_existing(
+        self, category_service, test_db_session
+    ):
         """Test updating existing payee category mapping."""
         # Setup existing mapping
         mapping = PayeeCategoryMapping(
             payee_name="Test Merchant",
             category_id="old-category-id",
             category_name="Old Category",
-            transaction_count=1
+            transaction_count=1,
         )
         test_db_session.add(mapping)
         await test_db_session.commit()
 
-        with patch('database.connection.db_manager.get_session') as mock_session:
+        with patch("database.connection.db_manager.get_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             await category_service.update_payee_category_mapping(
-                "Test Merchant",
-                "new-category-id",
-                "New Category"
+                "Test Merchant", "new-category-id", "New Category"
             )
 
             # Verify mapping was updated
             from sqlalchemy import select
+
             stmt = select(PayeeCategoryMapping).where(
                 PayeeCategoryMapping.payee_name == "Test Merchant"
             )
@@ -129,9 +139,11 @@ class TestCategoryService:
             assert updated_mapping.transaction_count == 2
 
     @pytest.mark.asyncio
-    async def test_record_processed_transaction(self, category_service, test_db_session):
+    async def test_record_processed_transaction(
+        self, category_service, test_db_session
+    ):
         """Test recording processed transaction."""
-        with patch('database.connection.db_manager.get_session') as mock_session:
+        with patch("database.connection.db_manager.get_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             await category_service.record_processed_transaction(
@@ -140,11 +152,12 @@ class TestCategoryService:
                 payee_name="Test Merchant",
                 amount=-12500,
                 transaction_date="2024-01-01",
-                status="processed"
+                status="processed",
             )
 
             # Verify transaction was recorded
             from sqlalchemy import select
+
             stmt = select(ProcessedTransaction).where(
                 ProcessedTransaction.up_transaction_id == "test-tx-id"
             )
@@ -158,9 +171,11 @@ class TestCategoryService:
             assert processed_tx.status == "processed"
 
     @pytest.mark.asyncio
-    async def test_record_processed_transaction_failed(self, category_service, test_db_session):
+    async def test_record_processed_transaction_failed(
+        self, category_service, test_db_session
+    ):
         """Test recording failed transaction with error message."""
-        with patch('database.connection.db_manager.get_session') as mock_session:
+        with patch("database.connection.db_manager.get_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             await category_service.record_processed_transaction(
@@ -170,11 +185,12 @@ class TestCategoryService:
                 amount=-12500,
                 transaction_date="2024-01-01",
                 status="failed",
-                error_message="API error occurred"
+                error_message="API error occurred",
             )
 
             # Verify transaction was recorded with error
             from sqlalchemy import select
+
             stmt = select(ProcessedTransaction).where(
                 ProcessedTransaction.up_transaction_id == "failed-tx-id"
             )
@@ -187,7 +203,9 @@ class TestCategoryService:
             assert processed_tx.error_message == "API error occurred"
 
     @pytest.mark.asyncio
-    async def test_is_transaction_processed_true(self, category_service, test_db_session):
+    async def test_is_transaction_processed_true(
+        self, category_service, test_db_session
+    ):
         """Test checking if transaction is processed - exists."""
         # Setup existing processed transaction
         processed_tx = ProcessedTransaction(
@@ -196,22 +214,26 @@ class TestCategoryService:
             payee_name="Test Merchant",
             amount=-12500,
             transaction_date="2024-01-01",
-            status="processed"
+            status="processed",
         )
         test_db_session.add(processed_tx)
         await test_db_session.commit()
 
-        with patch('database.connection.db_manager.get_session') as mock_session:
+        with patch("database.connection.db_manager.get_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            is_processed = await category_service.is_transaction_processed("processed-tx-id")
+            is_processed = await category_service.is_transaction_processed(
+                "processed-tx-id"
+            )
 
             assert is_processed is True
 
     @pytest.mark.asyncio
-    async def test_is_transaction_processed_false(self, category_service, test_db_session):
+    async def test_is_transaction_processed_false(
+        self, category_service, test_db_session
+    ):
         """Test checking if transaction is processed - doesn't exist."""
-        with patch('database.connection.db_manager.get_session') as mock_session:
+        with patch("database.connection.db_manager.get_session") as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             is_processed = await category_service.is_transaction_processed("new-tx-id")
@@ -221,8 +243,10 @@ class TestCategoryService:
     @pytest.mark.asyncio
     async def test_is_transaction_processed_error_handling(self, category_service):
         """Test error handling in transaction processed check."""
-        with patch('database.connection.db_manager.get_session') as mock_session:
-            mock_session.return_value.__aenter__.return_value.execute.side_effect = Exception("DB Error")
+        with patch("database.connection.db_manager.get_session") as mock_session:
+            mock_session.return_value.__aenter__.return_value.execute.side_effect = (
+                Exception("DB Error")
+            )
 
             # Should return False on error (err on side of caution)
             is_processed = await category_service.is_transaction_processed("test-tx-id")
