@@ -180,7 +180,7 @@ class TestAPIStartupShutdown:
             # Make a request to ensure app is started and working
             response = client.get("/health")
             assert response.status_code == 200
-            
+
             # Verify the app was created successfully with mocked dependencies
             # Note: TestClient may not trigger lifespan in the same way as a real server
             # but we've verified the app can handle requests
