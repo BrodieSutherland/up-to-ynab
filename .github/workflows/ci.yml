@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PYTHON_VERSION: 3.11
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      working-directory: .
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest-cov
+
+    - name: Run linting
+      working-directory: .
+      run: |
+        # Install linting tools
+        pip install black isort flake8
+
+        # Check code formatting
+        black --check --diff .
+
+        # Check import sorting
+        isort --check-only --diff .
+
+        # Run flake8 (with some relaxed settings for now)
+        flake8 --max-line-length=88 --extend-ignore=E203,W503 .
+
+    - name: Run tests
+      working-directory: .
+      run: |
+        pytest tests/ -v --cov=. --cov-report=xml --cov-report=term-missing
+      env:
+        # Mock environment variables for tests
+        UP_API_TOKEN: test_token
+        YNAB_API_TOKEN: test_token
+        YNAB_BUDGET_ID: test_budget
+        YNAB_ACCOUNT_ID: test_account
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        directory: .
+        fail_ci_if_error: false
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image
+      working-directory: .
+      run: |
+        docker build -t up-to-ynab:test .
+
+    - name: Test Docker image
+      working-directory: .
+      run: |
+        # Start container in detached mode
+        docker run -d --name test-container \
+          -e UP_API_TOKEN=test \
+          -e YNAB_API_TOKEN=test \
+          -e YNAB_BUDGET_ID=test \
+          -e YNAB_ACCOUNT_ID=test \
+          -p 5001:5001 \
+          up-to-ynab:test
+
+        # Wait for container to start
+        sleep 10
+
+        # Test health endpoint
+        curl -f http://localhost:5001/health || exit 1
+
+        # Clean up
+        docker stop test-container
+        docker rm test-container
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
