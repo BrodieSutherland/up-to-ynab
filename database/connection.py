@@ -18,9 +18,11 @@ class DatabaseManager:
             self.settings.database_url,
             # SQLite specific settings
             poolclass=StaticPool if "sqlite" in self.settings.database_url else None,
-            connect_args={"check_same_thread": False}
-            if "sqlite" in self.settings.database_url
-            else {},
+            connect_args=(
+                {"check_same_thread": False}
+                if "sqlite" in self.settings.database_url
+                else {}
+            ),
             echo=self.settings.debug_mode,
         )
         self.async_session = async_sessionmaker(

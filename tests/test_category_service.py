@@ -22,13 +22,15 @@ class TestCategoryService:
     ):
         """Test syncing categories from YNAB."""
         # Mock YNAB service methods
-        with patch.object(
-            category_service.ynab_service, "get_categories"
-        ) as mock_get_categories, patch.object(
-            category_service.ynab_service, "get_payees"
-        ) as mock_get_payees, patch(
-            "database.connection.db_manager.get_session"
-        ) as mock_session:
+        with (
+            patch.object(
+                category_service.ynab_service, "get_categories"
+            ) as mock_get_categories,
+            patch.object(
+                category_service.ynab_service, "get_payees"
+            ) as mock_get_payees,
+            patch("database.connection.db_manager.get_session") as mock_session,
+        ):
 
             # Setup mocks
             from models.ynab_models import YnabCategory

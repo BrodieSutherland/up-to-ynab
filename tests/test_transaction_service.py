@@ -30,22 +30,27 @@ class TestTransactionService:
         self, transaction_service, sample_webhook_event, sample_up_transaction
     ):
         """Test successful webhook event processing."""
-        with patch.object(
-            transaction_service.up_service,
-            "should_process_transaction",
-            return_value=True,
-        ), patch.object(
-            transaction_service.category_service,
-            "is_transaction_processed",
-            return_value=False,
-        ), patch.object(
-            transaction_service.up_service,
-            "get_transaction",
-            return_value=sample_up_transaction,
-        ), patch.object(
-            transaction_service,
-            "process_transaction",
-            return_value="Transaction processed",
+        with (
+            patch.object(
+                transaction_service.up_service,
+                "should_process_transaction",
+                return_value=True,
+            ),
+            patch.object(
+                transaction_service.category_service,
+                "is_transaction_processed",
+                return_value=False,
+            ),
+            patch.object(
+                transaction_service.up_service,
+                "get_transaction",
+                return_value=sample_up_transaction,
+            ),
+            patch.object(
+                transaction_service,
+                "process_transaction",
+                return_value="Transaction processed",
+            ),
         ):
 
             result = await transaction_service.process_webhook_event(
@@ -76,14 +81,17 @@ class TestTransactionService:
         self, transaction_service, sample_webhook_event
     ):
         """Test webhook event for already processed transaction."""
-        with patch.object(
-            transaction_service.up_service,
-            "should_process_transaction",
-            return_value=True,
-        ), patch.object(
-            transaction_service.category_service,
-            "is_transaction_processed",
-            return_value=True,
+        with (
+            patch.object(
+                transaction_service.up_service,
+                "should_process_transaction",
+                return_value=True,
+            ),
+            patch.object(
+                transaction_service.category_service,
+                "is_transaction_processed",
+                return_value=True,
+            ),
         ):
 
             result = await transaction_service.process_webhook_event(
@@ -97,19 +105,24 @@ class TestTransactionService:
         self, transaction_service, sample_webhook_event
     ):
         """Test webhook event when transaction fetch fails."""
-        with patch.object(
-            transaction_service.up_service,
-            "should_process_transaction",
-            return_value=True,
-        ), patch.object(
-            transaction_service.category_service,
-            "is_transaction_processed",
-            return_value=False,
-        ), patch.object(
-            transaction_service.up_service, "get_transaction", return_value=None
-        ), patch.object(
-            transaction_service.category_service, "record_processed_transaction"
-        ) as mock_record:
+        with (
+            patch.object(
+                transaction_service.up_service,
+                "should_process_transaction",
+                return_value=True,
+            ),
+            patch.object(
+                transaction_service.category_service,
+                "is_transaction_processed",
+                return_value=False,
+            ),
+            patch.object(
+                transaction_service.up_service, "get_transaction", return_value=None
+            ),
+            patch.object(
+                transaction_service.category_service, "record_processed_transaction"
+            ) as mock_record,
+        ):
 
             result = await transaction_service.process_webhook_event(
                 sample_webhook_event
@@ -133,25 +146,31 @@ class TestTransactionService:
             deleted=False,
         )
 
-        with patch.object(
-            transaction_service.transaction_filter,
-            "should_process_transaction",
-            return_value=True,
-        ), patch.object(
-            transaction_service.category_service,
-            "get_payee_category_mappings",
-            return_value={},
-        ), patch.object(
-            transaction_service.ynab_service,
-            "find_category_for_payee",
-            return_value=None,
-        ), patch.object(
-            transaction_service.ynab_service,
-            "create_transaction",
-            return_value=mock_ynab_transaction,
-        ), patch.object(
-            transaction_service.category_service, "record_processed_transaction"
-        ) as mock_record:
+        with (
+            patch.object(
+                transaction_service.transaction_filter,
+                "should_process_transaction",
+                return_value=True,
+            ),
+            patch.object(
+                transaction_service.category_service,
+                "get_payee_category_mappings",
+                return_value={},
+            ),
+            patch.object(
+                transaction_service.ynab_service,
+                "find_category_for_payee",
+                return_value=None,
+            ),
+            patch.object(
+                transaction_service.ynab_service,
+                "create_transaction",
+                return_value=mock_ynab_transaction,
+            ),
+            patch.object(
+                transaction_service.category_service, "record_processed_transaction"
+            ) as mock_record,
+        ):
 
             result = await transaction_service.process_transaction(
                 sample_up_transaction
@@ -173,17 +192,21 @@ class TestTransactionService:
         self, transaction_service, sample_up_transaction
     ):
         """Test transaction processing when transaction is filtered out."""
-        with patch.object(
-            transaction_service.transaction_filter,
-            "should_process_transaction",
-            return_value=False,
-        ), patch.object(
-            transaction_service.transaction_filter,
-            "get_filtered_reason",
-            return_value="Internal transfer detected",
-        ), patch.object(
-            transaction_service.category_service, "record_processed_transaction"
-        ) as mock_record:
+        with (
+            patch.object(
+                transaction_service.transaction_filter,
+                "should_process_transaction",
+                return_value=False,
+            ),
+            patch.object(
+                transaction_service.transaction_filter,
+                "get_filtered_reason",
+                return_value="Internal transfer detected",
+            ),
+            patch.object(
+                transaction_service.category_service, "record_processed_transaction"
+            ) as mock_record,
+        ):
 
             result = await transaction_service.process_transaction(
                 sample_up_transaction
@@ -213,24 +236,30 @@ class TestTransactionService:
 
         payee_mappings = {"Test Merchant": "test-category-id"}
 
-        with patch.object(
-            transaction_service.transaction_filter,
-            "should_process_transaction",
-            return_value=True,
-        ), patch.object(
-            transaction_service.category_service,
-            "get_payee_category_mappings",
-            return_value=payee_mappings,
-        ), patch.object(
-            transaction_service.ynab_service,
-            "find_category_for_payee",
-            return_value="test-category-id",
-        ), patch.object(
-            transaction_service.ynab_service,
-            "create_transaction",
-            return_value=mock_ynab_transaction,
-        ), patch.object(
-            transaction_service.category_service, "record_processed_transaction"
+        with (
+            patch.object(
+                transaction_service.transaction_filter,
+                "should_process_transaction",
+                return_value=True,
+            ),
+            patch.object(
+                transaction_service.category_service,
+                "get_payee_category_mappings",
+                return_value=payee_mappings,
+            ),
+            patch.object(
+                transaction_service.ynab_service,
+                "find_category_for_payee",
+                return_value="test-category-id",
+            ),
+            patch.object(
+                transaction_service.ynab_service,
+                "create_transaction",
+                return_value=mock_ynab_transaction,
+            ),
+            patch.object(
+                transaction_service.category_service, "record_processed_transaction"
+            ),
         ):
 
             result = await transaction_service.process_transaction(
@@ -248,23 +277,31 @@ class TestTransactionService:
         self, transaction_service, sample_up_transaction
     ):
         """Test transaction processing when YNAB creation fails."""
-        with patch.object(
-            transaction_service.transaction_filter,
-            "should_process_transaction",
-            return_value=True,
-        ), patch.object(
-            transaction_service.category_service,
-            "get_payee_category_mappings",
-            return_value={},
-        ), patch.object(
-            transaction_service.ynab_service,
-            "find_category_for_payee",
-            return_value=None,
-        ), patch.object(
-            transaction_service.ynab_service, "create_transaction", return_value=None
-        ), patch.object(
-            transaction_service.category_service, "record_processed_transaction"
-        ) as mock_record:
+        with (
+            patch.object(
+                transaction_service.transaction_filter,
+                "should_process_transaction",
+                return_value=True,
+            ),
+            patch.object(
+                transaction_service.category_service,
+                "get_payee_category_mappings",
+                return_value={},
+            ),
+            patch.object(
+                transaction_service.ynab_service,
+                "find_category_for_payee",
+                return_value=None,
+            ),
+            patch.object(
+                transaction_service.ynab_service,
+                "create_transaction",
+                return_value=None,
+            ),
+            patch.object(
+                transaction_service.category_service, "record_processed_transaction"
+            ) as mock_record,
+        ):
 
             result = await transaction_service.process_transaction(
                 sample_up_transaction
@@ -281,13 +318,16 @@ class TestTransactionService:
         self, transaction_service, sample_up_transaction
     ):
         """Test transaction processing with unexpected exception."""
-        with patch.object(
-            transaction_service.transaction_filter,
-            "should_process_transaction",
-            side_effect=Exception("Unexpected error"),
-        ), patch.object(
-            transaction_service.category_service, "record_processed_transaction"
-        ) as mock_record:
+        with (
+            patch.object(
+                transaction_service.transaction_filter,
+                "should_process_transaction",
+                side_effect=Exception("Unexpected error"),
+            ),
+            patch.object(
+                transaction_service.category_service, "record_processed_transaction"
+            ) as mock_record,
+        ):
 
             result = await transaction_service.process_transaction(
                 sample_up_transaction
