@@ -60,7 +60,7 @@ jobs:
         YNAB_ACCOUNT_ID: test_account
 
     - name: Upload coverage reports
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v5
       with:
         file: ./coverage.xml
         directory: .
