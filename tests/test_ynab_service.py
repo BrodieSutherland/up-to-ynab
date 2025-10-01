@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
@@ -26,7 +26,7 @@ class TestYnabService:
         self, ynab_service, sample_up_transaction, sample_ynab_transaction_response
     ):
         """Test successful transaction creation in YNAB."""
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.json.return_value = sample_ynab_transaction_response
         mock_response.raise_for_status.return_value = None
 
@@ -50,7 +50,7 @@ class TestYnabService:
         response_data = sample_ynab_transaction_response.copy()
         response_data["data"]["transaction"]["category_id"] = "test-category-id"
 
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.json.return_value = response_data
         mock_response.raise_for_status.return_value = None
 
@@ -71,11 +71,11 @@ class TestYnabService:
         self, ynab_service, sample_up_transaction
     ):
         """Test transaction creation with HTTP error."""
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.status_code = 400
         mock_response.text = "Bad Request"
         mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Bad Request", request=AsyncMock(), response=mock_response
+            "Bad Request", request=Mock(), response=mock_response
         )
 
         with patch("httpx.AsyncClient") as mock_client:
@@ -90,7 +90,7 @@ class TestYnabService:
     @pytest.mark.asyncio
     async def test_get_budget_success(self, ynab_service, sample_ynab_budget_data):
         """Test successful budget retrieval."""
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.json.return_value = sample_ynab_budget_data
         mock_response.raise_for_status.return_value = None
 
@@ -109,10 +109,10 @@ class TestYnabService:
     @pytest.mark.asyncio
     async def test_get_budget_http_error(self, ynab_service):
         """Test budget retrieval with HTTP error."""
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.status_code = 404
         mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Not Found", request=AsyncMock(), response=mock_response
+            "Not Found", request=Mock(), response=mock_response
         )
 
         with patch("httpx.AsyncClient") as mock_client:
@@ -127,7 +127,7 @@ class TestYnabService:
     @pytest.mark.asyncio
     async def test_get_categories(self, ynab_service, sample_ynab_budget_data):
         """Test category retrieval from budget."""
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.json.return_value = sample_ynab_budget_data
         mock_response.raise_for_status.return_value = None
 
@@ -145,10 +145,10 @@ class TestYnabService:
     @pytest.mark.asyncio
     async def test_get_categories_no_budget(self, ynab_service):
         """Test category retrieval when budget fetch fails."""
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.status_code = 404
         mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Not Found", request=AsyncMock(), response=mock_response
+            "Not Found", request=Mock(), response=mock_response
         )
 
         with patch("httpx.AsyncClient") as mock_client:
@@ -174,7 +174,7 @@ class TestYnabService:
             }
         ]
 
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.json.return_value = budget_data
         mock_response.raise_for_status.return_value = None
 

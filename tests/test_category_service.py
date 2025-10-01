@@ -37,6 +37,7 @@ class TestCategoryService:
                 YnabCategory(
                     id="test-category-id",
                     name="Test Category",
+                    category_group_id="test-group-id",
                     hidden=False,
                     budgeted=0,
                     activity=0,

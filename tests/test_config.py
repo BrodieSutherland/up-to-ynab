@@ -75,13 +75,22 @@ class TestSettings:
         assert settings.database_url == "postgresql://custom:db@localhost/test"
         assert settings.internal_transfer_strings == custom_transfer_strings
 
-    def test_settings_missing_required_fields(self):
+    def test_settings_missing_required_fields(self, monkeypatch):
         """Test settings validation with missing required fields."""
-        with pytest.raises(ValidationError):
-            Settings()  # Missing all required fields
+        # Clear environment variables to ensure validation happens
+        monkeypatch.delenv("UP_API_TOKEN", raising=False)
+        monkeypatch.delenv("YNAB_API_TOKEN", raising=False)
+        monkeypatch.delenv("YNAB_BUDGET_ID", raising=False)
+        monkeypatch.delenv("YNAB_ACCOUNT_ID", raising=False)
+        
+        # Prevent loading from .env file
+        monkeypatch.setenv("PYDANTIC_SETTINGS_ENV_FILE", "")
 
         with pytest.raises(ValidationError):
-            Settings(up_api_token="test")  # Missing other required fields
+            Settings(_env_file=None)  # Missing all required fields
+
+        with pytest.raises(ValidationError):
+            Settings(up_api_token="test", _env_file=None)  # Missing other required fields  # Missing other required fields  # Missing other required fields
 
     @patch.dict(
         os.environ,

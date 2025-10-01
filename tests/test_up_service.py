@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
@@ -21,7 +21,7 @@ class TestUpService:
         self, up_service, sample_up_transaction_data
     ):
         """Test successful transaction retrieval."""
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.json.return_value = sample_up_transaction_data
         mock_response.raise_for_status.return_value = None
 
@@ -40,10 +40,10 @@ class TestUpService:
     @pytest.mark.asyncio
     async def test_get_transaction_http_error(self, up_service):
         """Test transaction retrieval with HTTP error."""
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.status_code = 404
         mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Not Found", request=AsyncMock(), response=mock_response
+            "Not Found", request=Mock(), response=mock_response
         )
 
         with patch("httpx.AsyncClient") as mock_client:
@@ -60,7 +60,7 @@ class TestUpService:
         """Test successful webhook creation."""
         webhook_response = {"data": {"id": "test-webhook-id", "type": "webhooks"}}
 
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.json.return_value = webhook_response
         mock_response.raise_for_status.return_value = None
 
@@ -76,10 +76,10 @@ class TestUpService:
     @pytest.mark.asyncio
     async def test_create_webhook_failure(self, up_service):
         """Test webhook creation failure."""
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.status_code = 400
         mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-            "Bad Request", request=AsyncMock(), response=mock_response
+            "Bad Request", request=Mock(), response=mock_response
         )
 
         with patch("httpx.AsyncClient") as mock_client:
@@ -107,7 +107,7 @@ class TestUpService:
             ]
         }
 
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.json.return_value = webhooks_response
         mock_response.raise_for_status.return_value = None
 
@@ -133,7 +133,7 @@ class TestUpService:
             ]
         }
 
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.json.return_value = webhooks_response
         mock_response.raise_for_status.return_value = None
 
@@ -151,7 +151,7 @@ class TestUpService:
         """Test webhook existence check - doesn't exist."""
         webhooks_response = {"data": []}
 
-        mock_response = AsyncMock()
+        mock_response = Mock()
         mock_response.json.return_value = webhooks_response
         mock_response.raise_for_status.return_value = None
 
