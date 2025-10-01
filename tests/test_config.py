@@ -82,7 +82,7 @@ class TestSettings:
         monkeypatch.delenv("YNAB_API_TOKEN", raising=False)
         monkeypatch.delenv("YNAB_BUDGET_ID", raising=False)
         monkeypatch.delenv("YNAB_ACCOUNT_ID", raising=False)
-        
+
         # Prevent loading from .env file
         monkeypatch.setenv("PYDANTIC_SETTINGS_ENV_FILE", "")
 
@@ -90,7 +90,9 @@ class TestSettings:
             Settings(_env_file=None)  # Missing all required fields
 
         with pytest.raises(ValidationError):
-            Settings(up_api_token="test", _env_file=None)  # Missing other required fields  # Missing other required fields  # Missing other required fields
+            Settings(
+                up_api_token="test", _env_file=None
+            )  # Missing other required fields  # Missing other required fields  # Missing other required fields
 
     @patch.dict(
         os.environ,
