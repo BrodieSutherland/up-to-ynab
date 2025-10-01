@@ -92,7 +92,7 @@ class TestSettings:
         with pytest.raises(ValidationError):
             Settings(
                 up_api_token="test", _env_file=None
-            )  # Missing other required fields  # Missing other required fields  # Missing other required fields
+            )  # Missing other required fields
 
     @patch.dict(
         os.environ,
