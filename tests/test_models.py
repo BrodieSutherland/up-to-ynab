@@ -7,7 +7,6 @@ from models.up_models import (
     UpMoney,
     UpTransaction,
     UpTransactionAttributes,
-    UpTransactionRelationships,
     UpWebhookEvent,
 )
 from models.ynab_models import (

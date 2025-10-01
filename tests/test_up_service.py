@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from models.up_models import UpTransaction, UpWebhookEvent
+from models.up_models import UpWebhookEvent
 from services.up_service import UpService
 
 

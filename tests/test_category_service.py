@@ -1,11 +1,9 @@
-from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from database.models import PayeeCategoryMapping, ProcessedTransaction
 from services.category_service import CategoryService
-from services.ynab_service import YnabService
 
 
 class TestCategoryService:

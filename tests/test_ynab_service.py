@@ -4,7 +4,6 @@ import httpx
 import pytest
 
 from models.up_models import UpTransaction
-from models.ynab_models import YnabBudget, YnabTransactionResponse
 from services.ynab_service import YnabService
 
 

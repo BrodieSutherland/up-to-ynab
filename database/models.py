@@ -28,7 +28,10 @@ class PayeeCategoryMapping(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     def __repr__(self) -> str:
-        return f"<PayeeCategoryMapping(payee='{self.payee_name}', category='{self.category_name}')>"
+        return (
+            f"<PayeeCategoryMapping(payee='{self.payee_name}', "
+            f"category='{self.category_name}')>"
+        )
 
 
 class ProcessedTransaction(Base):
@@ -51,4 +54,7 @@ class ProcessedTransaction(Base):
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     def __repr__(self) -> str:
-        return f"<ProcessedTransaction(up_id='{self.up_transaction_id}', payee='{self.payee_name}', status='{self.status}')>"
+        return (
+            f"<ProcessedTransaction(up_id='{self.up_transaction_id}', "
+            f"payee='{self.payee_name}', status='{self.status}')>"
+        )

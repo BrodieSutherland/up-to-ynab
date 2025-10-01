@@ -1,5 +1,3 @@
-from typing import List
-
 from models.up_models import UpTransaction
 from utils.config import get_settings
 

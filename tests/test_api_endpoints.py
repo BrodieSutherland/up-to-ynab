@@ -139,7 +139,8 @@ class TestAPIMiddleware:
     @patch("app.logger")
     def test_global_exception_handler(self, mock_logger, client):
         """Test global exception handler."""
-        # This is harder to test with TestClient as it doesn't trigger the same error paths
+        # This is harder to test with TestClient as it doesn't trigger
+        # the same error paths
         # In a real scenario, we'd need to create an endpoint that raises an exception
 
         # For now, just verify the health endpoint works (basic functionality)

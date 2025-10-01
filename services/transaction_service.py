@@ -1,9 +1,6 @@
-from typing import Optional
-
 import structlog
 
 from models.up_models import UpTransaction, UpWebhookEvent
-from models.ynab_models import YnabTransactionResponse
 from services.category_service import CategoryService
 from services.up_service import UpService
 from services.ynab_service import YnabService
@@ -124,7 +121,10 @@ class TransactionService:
                     category_id=category_id,
                 )
 
-                return f"${up_transaction.attributes.amount.value} paid to {up_transaction.payee} at {up_transaction.date}"
+                return (
+                    f"${up_transaction.attributes.amount.value} paid to "
+                    f"{up_transaction.payee} at {up_transaction.date}"
+                )
             else:
                 # Record failed processing
                 await self.category_service.record_processed_transaction(

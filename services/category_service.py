@@ -1,13 +1,12 @@
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import structlog
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.connection import db_manager
 from database.models import PayeeCategoryMapping, ProcessedTransaction
-from models.ynab_models import YnabCategory, YnabPayee
 from services.ynab_service import YnabService
 
 logger = structlog.get_logger()
@@ -27,9 +26,6 @@ class CategoryService:
             # Get all categories and payees from YNAB
             categories = await self.ynab_service.get_categories()
             payees = await self.ynab_service.get_payees()
-
-            # Create lookup dictionaries
-            category_lookup = {cat.id: cat.name for cat in categories}
 
             logger.info(
                 "Retrieved YNAB data for sync",
@@ -55,7 +51,7 @@ class CategoryService:
         try:
             async with db_manager.get_session() as session:
                 stmt = select(PayeeCategoryMapping).where(
-                    PayeeCategoryMapping.is_active == True
+                    PayeeCategoryMapping.is_active.is_(True)
                 )
                 result = await session.execute(stmt)
                 mappings = result.scalars().all()

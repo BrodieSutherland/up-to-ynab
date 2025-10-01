@@ -1,7 +1,6 @@
 import asyncio
-import os
 from typing import AsyncGenerator, Generator
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -10,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 from app import create_app
-from database.connection import db_manager
 from database.models import Base
 from utils.config import Settings
 
