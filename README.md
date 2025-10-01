@@ -2,8 +2,8 @@
 
 Automatically sync transactions from [Up Bank](https://up.com.au/) to [YNAB](https://www.youneedabudget.com/) using webhooks and APIs.
 
-[![CI](https://github.com/brodie/up-to-ynab/actions/workflows/ci.yml/badge.svg)](https://github.com/brodie/up-to-ynab/actions/workflows/ci.yml)
-[![Docker](https://img.shields.io/docker/v/username/up-to-ynab?label=docker)](https://hub.docker.com/r/username/up-to-ynab)
+[![CI](https://github.com/BrodieSutherland/up-to-ynab/actions/workflows/ci.yml/badge.svg)](https://github.com/BrodieSutherland/up-to-ynab/actions/workflows/ci.yml)
+[![Docker](https://img.shields.io/docker/v/brodiesutherland/up-to-ynab?label=docker)](https://hub.docker.com/r/brodiesutherland/up-to-ynab)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://python.org)
 
 ## Features
