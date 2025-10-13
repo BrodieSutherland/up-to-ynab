@@ -9,7 +9,7 @@ description = "Sync transactions from Up Bank to YNAB"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "fastapi==0.118.0",
+    "fastapi==0.119.0",
     "uvicorn[standard]==0.37.0",
     "pydantic==2.12.0",
     "pydantic-settings==2.1.0",
