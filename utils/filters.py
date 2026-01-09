@@ -23,7 +23,7 @@ class TransactionFilter:
         # Filter out internal transfers
         if self.is_internal_transfer(transaction):
             return False
-        
+
         # Other filters?
 
         return True
