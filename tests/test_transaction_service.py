@@ -274,10 +274,9 @@ class TestTransactionService:
 
             assert "Test Merchant" in result
             # Verify category was passed to create_transaction
-            (
-                transaction_service.ynab_service.create_transaction.assert_called_once_with(
-                    sample_up_transaction, "test-category-id"
-                )
+            mock_create = transaction_service.ynab_service.create_transaction
+            mock_create.assert_called_once_with(
+                sample_up_transaction, "test-category-id"
             )
 
     @pytest.mark.asyncio
