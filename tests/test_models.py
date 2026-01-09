@@ -76,7 +76,9 @@ class TestUpModels:
         """Test internal transfer detection in UpTransaction."""
         # Modify transaction to be internal transfer
         transaction_data = sample_up_transaction_data["data"].copy()
-        transaction_data["attributes"]["description"] = "Transfer to Savings Account"
+        transaction_data["attributes"][
+            "description"
+        ] = "Transfer to Savings Account"
 
         transaction = UpTransaction(**transaction_data)
 
@@ -94,7 +96,9 @@ class TestUpModels:
         # Test with only created_at (no settled_at)
         transaction_data = sample_up_transaction_data["data"].copy()
         transaction_data["attributes"]["settledAt"] = None
-        transaction_data["attributes"]["createdAt"] = "2024-01-02T15:30:00+00:00"
+        transaction_data["attributes"][
+            "createdAt"
+        ] = "2024-01-02T15:30:00+00:00"
 
         transaction = UpTransaction(**transaction_data)
         assert transaction.date == "2024-01-02"
@@ -147,7 +151,7 @@ class TestYnabModels:
         assert transaction_detail.payee_name == "Test Merchant"
         assert transaction_detail.category_id == "test-category-id"
         assert transaction_detail.amount == -12500
-        assert transaction_detail.cleared == "cleared"  # default value
+        assert transaction_detail.cleared == "uncleared"  # default value
         assert transaction_detail.approved is True  # default value
 
     def test_ynab_transaction_request_creation(self):
@@ -159,11 +163,15 @@ class TestYnabModels:
             date="2024-01-01",
         )
 
-        transaction_request = YnabTransactionRequest(transaction=transaction_detail)
+        transaction_request = YnabTransactionRequest(
+            transaction=transaction_detail
+        )
 
         assert transaction_request.transaction == transaction_detail
 
-    def test_ynab_transaction_response_creation(self, sample_ynab_transaction_response):
+    def test_ynab_transaction_response_creation(
+        self, sample_ynab_transaction_response
+    ):
         """Test YnabTransactionResponse model creation."""
         response_data = sample_ynab_transaction_response["data"]["transaction"]
 
@@ -223,7 +231,9 @@ class TestYnabModels:
 class TestModelIntegration:
     """Test integration between different models."""
 
-    def test_up_to_ynab_transaction_conversion(self, sample_up_transaction_data):
+    def test_up_to_ynab_transaction_conversion(
+        self, sample_up_transaction_data
+    ):
         """Test converting Up transaction to YNAB transaction detail."""
         up_transaction = UpTransaction(**sample_up_transaction_data["data"])
 

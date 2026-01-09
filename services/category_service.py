@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Dict, Optional
 
 import structlog
@@ -57,17 +57,21 @@ class CategoryService:
                 mappings = result.scalars().all()
 
                 mapping_dict = {
-                    mapping.payee_name: mapping.category_id for mapping in mappings
+                    mapping.payee_name: mapping.category_id
+                    for mapping in mappings
                 }
 
                 logger.info(
-                    "Retrieved payee category mappings", count=len(mapping_dict)
+                    "Retrieved payee category mappings",
+                    count=len(mapping_dict),
                 )
                 return mapping_dict
 
         except Exception as e:
             logger.error(
-                "Failed to retrieve payee category mappings", error=str(e), exc_info=e
+                "Failed to retrieve payee category mappings",
+                error=str(e),
+                exc_info=e,
             )
             return {}
 
@@ -88,7 +92,7 @@ class CategoryService:
                     # Update existing mapping
                     existing_mapping.category_id = category_id
                     existing_mapping.category_name = category_name
-                    existing_mapping.last_updated = datetime.utcnow()
+                    existing_mapping.last_updated = datetime.now(UTC)
                     existing_mapping.transaction_count += 1
 
                     logger.info(

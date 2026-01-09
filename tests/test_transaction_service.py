@@ -117,10 +117,13 @@ class TestTransactionService:
                 return_value=False,
             ),
             patch.object(
-                transaction_service.up_service, "get_transaction", return_value=None
+                transaction_service.up_service,
+                "get_transaction",
+                return_value=None,
             ),
             patch.object(
-                transaction_service.category_service, "record_processed_transaction"
+                transaction_service.category_service,
+                "record_processed_transaction",
             ) as mock_record,
         ):
 
@@ -168,7 +171,8 @@ class TestTransactionService:
                 return_value=mock_ynab_transaction,
             ),
             patch.object(
-                transaction_service.category_service, "record_processed_transaction"
+                transaction_service.category_service,
+                "record_processed_transaction",
             ) as mock_record,
         ):
 
@@ -204,7 +208,8 @@ class TestTransactionService:
                 return_value="Internal transfer detected",
             ),
             patch.object(
-                transaction_service.category_service, "record_processed_transaction"
+                transaction_service.category_service,
+                "record_processed_transaction",
             ) as mock_record,
         ):
 
@@ -258,7 +263,8 @@ class TestTransactionService:
                 return_value=mock_ynab_transaction,
             ),
             patch.object(
-                transaction_service.category_service, "record_processed_transaction"
+                transaction_service.category_service,
+                "record_processed_transaction",
             ),
         ):
 
@@ -268,7 +274,8 @@ class TestTransactionService:
 
             assert "Test Merchant" in result
             # Verify category was passed to create_transaction
-            transaction_service.ynab_service.create_transaction.assert_called_once_with(
+            mock_create = transaction_service.ynab_service.create_transaction
+            mock_create.assert_called_once_with(
                 sample_up_transaction, "test-category-id"
             )
 
@@ -299,7 +306,8 @@ class TestTransactionService:
                 return_value=None,
             ),
             patch.object(
-                transaction_service.category_service, "record_processed_transaction"
+                transaction_service.category_service,
+                "record_processed_transaction",
             ) as mock_record,
         ):
 
@@ -325,7 +333,8 @@ class TestTransactionService:
                 side_effect=Exception("Unexpected error"),
             ),
             patch.object(
-                transaction_service.category_service, "record_processed_transaction"
+                transaction_service.category_service,
+                "record_processed_transaction",
             ) as mock_record,
         ):
 

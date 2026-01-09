@@ -29,6 +29,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.python-version
 
 # Database
 *.db
@@ -41,6 +42,7 @@ venv.bak/
 *.swp
 *.swo
 *~
+.claude/
 
 # OS
 .DS_Store

@@ -29,7 +29,9 @@ class UpWebhookEventData(BaseModel):
         if not self.relationships:
             return None
 
-        transaction_data = self.relationships.get("transaction", {}).get("data")
+        transaction_data = self.relationships.get("transaction", {}).get(
+            "data"
+        )
         return transaction_data.get("id") if transaction_data else None
 
 
@@ -38,8 +40,8 @@ class UpWebhookEvent(BaseModel):
 
     data: UpWebhookEventData
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "example": {
                 "data": {
                     "type": "webhook-events",
@@ -59,6 +61,7 @@ class UpWebhookEvent(BaseModel):
                 }
             }
         }
+    }
 
 
 class UpMoney(BaseModel):
@@ -105,7 +108,9 @@ class UpTransactionAttributes(BaseModel):
     round_up: Optional[Dict[str, Any]] = Field(alias="roundUp", default=None)
     cashback: Optional[Dict[str, Any]] = None
     amount: UpMoney
-    foreign_amount: Optional[UpMoney] = Field(alias="foreignAmount", default=None)
+    foreign_amount: Optional[UpMoney] = Field(
+        alias="foreignAmount", default=None
+    )
     currency_conversion_fee: Optional[UpMoney] = Field(
         alias="currencyConversionFee", default=None
     )
@@ -115,7 +120,9 @@ class UpTransactionAttributes(BaseModel):
     card_purchase_method: Optional[Dict[str, Any]] = Field(
         alias="cardPurchaseMethod", default=None
     )
-    transaction_type: Optional[str] = Field(alias="transactionType", default=None)
+    transaction_type: Optional[str] = Field(
+        alias="transactionType", default=None
+    )
     note: Optional[str] = None
     performing_customer: Optional[Dict[str, Any]] = Field(
         alias="performingCustomer", default=None

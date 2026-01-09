@@ -1,16 +1,27 @@
 import asyncio
+import os
 from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import StaticPool
 
-from app import create_app
 from database.models import Base
 from utils.config import Settings
+
+# Set test environment variables before importing app
+# This prevents validation errors when database.connection initializes
+os.environ.setdefault("UP_API_TOKEN", "test_up_token")
+os.environ.setdefault("YNAB_API_TOKEN", "test_ynab_token")
+os.environ.setdefault("YNAB_BUDGET_ID", "test_budget_id")
+os.environ.setdefault("YNAB_ACCOUNT_ID", "test_account_id")
 
 # Test database URL
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -66,7 +77,9 @@ async def test_db_engine():
 
 
 @pytest_asyncio.fixture
-async def test_db_session(test_db_engine) -> AsyncGenerator[AsyncSession, None]:
+async def test_db_session(
+    test_db_engine,
+) -> AsyncGenerator[AsyncSession, None]:
     """Create a test database session."""
     async_session = async_sessionmaker(
         test_db_engine,
@@ -81,6 +94,9 @@ async def test_db_session(test_db_engine) -> AsyncGenerator[AsyncSession, None]:
 @pytest.fixture
 def client() -> TestClient:
     """Create a test client for the FastAPI app."""
+    # Lazy import to ensure environment variables are set first
+    from app import create_app
+
     app = create_app()
     return TestClient(app)
 
@@ -119,7 +135,9 @@ def sample_up_transaction_data():
                 "createdAt": "2024-01-01T12:00:00+00:00",
             },
             "relationships": {
-                "account": {"data": {"type": "accounts", "id": "test-account-id"}},
+                "account": {
+                    "data": {"type": "accounts", "id": "test-account-id"}
+                },
                 "category": None,
                 "parentCategory": None,
                 "tags": None,
@@ -143,7 +161,10 @@ def sample_up_webhook_event_data():
             },
             "relationships": {
                 "transaction": {
-                    "data": {"type": "transactions", "id": "test-transaction-id"}
+                    "data": {
+                        "type": "transactions",
+                        "id": "test-transaction-id",
+                    }
                 }
             },
         }

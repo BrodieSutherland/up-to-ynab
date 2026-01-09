@@ -27,7 +27,10 @@ class TestAPIEndpoints:
 
     @patch("app.TransactionService")
     def test_webhook_endpoint_success(
-        self, mock_transaction_service_class, client, sample_up_webhook_event_data
+        self,
+        mock_transaction_service_class,
+        client,
+        sample_up_webhook_event_data,
     ):
         """Test webhook endpoint with successful processing."""
         # Setup mock
@@ -60,12 +63,17 @@ class TestAPIEndpoints:
 
     @patch("app.TransactionService")
     def test_webhook_endpoint_processing_error(
-        self, mock_transaction_service_class, client, sample_up_webhook_event_data
+        self,
+        mock_transaction_service_class,
+        client,
+        sample_up_webhook_event_data,
     ):
         """Test webhook endpoint when processing raises an exception."""
         # Setup mock to raise exception
         mock_service = AsyncMock()
-        mock_service.process_webhook_event.side_effect = Exception("Processing failed")
+        mock_service.process_webhook_event.side_effect = Exception(
+            "Processing failed"
+        )
         mock_transaction_service_class.return_value = mock_service
 
         response = client.post("/webhook", json=sample_up_webhook_event_data)
@@ -75,7 +83,9 @@ class TestAPIEndpoints:
         assert "Invalid webhook payload" in data["detail"]
 
     @patch("services.transaction_service.TransactionService")
-    def test_refresh_endpoint_success(self, mock_transaction_service_class, client):
+    def test_refresh_endpoint_success(
+        self, mock_transaction_service_class, client
+    ):
         """Test refresh endpoint with successful data refresh."""
         # Setup mock
         mock_service = AsyncMock()
@@ -90,7 +100,9 @@ class TestAPIEndpoints:
         assert data["message"] == "Data refreshed successfully"
 
     @patch("app.TransactionService")
-    def test_refresh_endpoint_failure(self, mock_transaction_service_class, client):
+    def test_refresh_endpoint_failure(
+        self, mock_transaction_service_class, client
+    ):
         """Test refresh endpoint when refresh fails."""
         # Setup mock to raise exception
         mock_service = AsyncMock()
@@ -135,14 +147,18 @@ class TestAPIMiddleware:
 
             # TestClient doesn't handle CORS preflight requests the same way
             # but we can verify the middleware is configured
-            assert response.status_code in [200, 405]  # OPTIONS might not be allowed
+            assert response.status_code in [
+                200,
+                405,
+            ]  # OPTIONS might not be allowed
 
     @patch("app.logger")
     def test_global_exception_handler(self, mock_logger, client):
         """Test global exception handler."""
         # This is harder to test with TestClient as it doesn't trigger
         # the same error paths
-        # In a real scenario, we'd need to create an endpoint that raises an exception
+        # In a real scenario, we'd need to create an endpoint that raises an
+        # exception
 
         # For now, just verify the health endpoint works (basic functionality)
         response = client.get("/health")
@@ -165,14 +181,18 @@ class TestAPIStartupShutdown:
         mock_up_service_instance.ping_webhook.return_value = True
 
         mock_transaction_service_instance = AsyncMock()
-        mock_transaction_service.return_value = mock_transaction_service_instance
+        mock_transaction_service.return_value = (
+            mock_transaction_service_instance
+        )
         mock_transaction_service_instance.refresh_data.return_value = "Success"
 
         mock_create_tables.return_value = None
 
         # Create app to trigger startup
         with patch("app.get_settings") as mock_settings:
-            mock_settings.return_value.webhook_url = "https://test.example.com/webhook"
+            mock_settings.return_value.webhook_url = (
+                "https://test.example.com/webhook"
+            )
 
             app = create_app()
             client = TestClient(app)
@@ -181,9 +201,9 @@ class TestAPIStartupShutdown:
             response = client.get("/health")
             assert response.status_code == 200
 
-            # Verify the app was created successfully with mocked dependencies
-            # Note: TestClient may not trigger lifespan in the same way as a real server
-            # but we've verified the app can handle requests
+            # Verify app was created successfully with mocked dependencies
+            # Note: TestClient may not trigger lifespan the same way as real
+            # server, but we've verified the app can handle requests
             assert app is not None
 
     @patch("database.connection.db_manager.create_tables")

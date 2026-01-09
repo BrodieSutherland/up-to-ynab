@@ -28,8 +28,8 @@ class WebhookResponse(BaseModel):
     status: str
     result: str
 
-    class Config:
-        json_schema_extra = {
+    model_config = {
+        "json_schema_extra": {
             "examples": [
                 {
                     "status": "processed",
@@ -39,9 +39,13 @@ class WebhookResponse(BaseModel):
                     "status": "processed",
                     "result": "Event ignored - not a transaction creation",
                 },
-                {"status": "processed", "result": "Transaction already processed"},
+                {
+                    "status": "processed",
+                    "result": "Transaction already processed",
+                },
             ]
         }
+    }
 
 
 @asynccontextmanager
@@ -60,11 +64,15 @@ async def lifespan(app: FastAPI):
         # Setup webhook if URL is provided
         settings = get_settings()
         if settings.webhook_url:
-            webhook_exists = await up_service.ping_webhook(settings.webhook_url)
+            webhook_exists = await up_service.ping_webhook(
+                settings.webhook_url
+            )
             if webhook_exists:
                 logger.info("Webhook is ready", url=settings.webhook_url)
             else:
-                logger.error("Failed to setup webhook", url=settings.webhook_url)
+                logger.error(
+                    "Failed to setup webhook", url=settings.webhook_url
+                )
         else:
             logger.info("No webhook URL configured - webhook setup skipped")
 
@@ -72,16 +80,21 @@ async def lifespan(app: FastAPI):
         try:
             await transaction_service.refresh_data()
         except Exception as e:
-            logger.error("Failed to refresh category data on startup", error=str(e))
+            logger.error(
+                "Failed to refresh category data on startup", error=str(e)
+            )
 
     except ValueError as e:
         logger.error(
-            "Service initialization failed - check your API tokens", error=str(e)
+            "Service initialization failed - check your API tokens",
+            error=str(e),
         )
         # Don't fail startup completely, but services won't work
     except Exception as e:
         logger.error(
-            "Unexpected error during service initialization", error=str(e), exc_info=e
+            "Unexpected error during service initialization",
+            error=str(e),
+            exc_info=e,
         )
 
     logger.info("UP to YNAB application started successfully")
@@ -134,7 +147,11 @@ def create_app() -> FastAPI:
     @app.get("/health", tags=["health"])
     async def health_check() -> Dict[str, Any]:
         """Health check endpoint for monitoring."""
-        return {"status": "healthy", "service": "up-to-ynab", "version": "2.0.0"}
+        return {
+            "status": "healthy",
+            "service": "up-to-ynab",
+            "version": "2.0.0",
+        }
 
     # Webhook endpoint
     @app.post(
@@ -176,25 +193,32 @@ def create_app() -> FastAPI:
         """,
     )
     async def handle_webhook(webhook_event: UpWebhookEvent) -> WebhookResponse:
-        """Handle incoming webhooks from Up Bank."""
+        """Handle incoming webhook events from Up Bank."""
         try:
 
-            logger.info("Received webhook", event_type=webhook_event.data.event_type)
+            logger.info(
+                "Received event", event_type=webhook_event.data.event_type
+            )
 
             # Process the webhook event
             try:
                 transaction_service = TransactionService()
-                result = await transaction_service.process_webhook_event(webhook_event)
-                logger.info("Webhook processed", result=result)
+                result = await transaction_service.process_webhook_event(
+                    webhook_event
+                )
+                logger.info("Event processed", result=result)
                 return WebhookResponse(status="processed", result=result)
             except ValueError as e:
                 logger.error(
-                    "Service initialization failed during webhook processing",
+                    (
+                        "Service initialization failed during "
+                        "webhook processing"
+                    ),
                     error=str(e),
                 )
                 return WebhookResponse(
                     status="error",
-                    result="Service configuration error - check API tokens",
+                    result=("Service configuration error - check API tokens"),
                 )
 
         except Exception as exc:
@@ -203,7 +227,9 @@ def create_app() -> FastAPI:
                 validation_summary = format_validation_errors(exc)
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Invalid webhook payload - {validation_summary}",
+                    detail=(
+                        f"Invalid webhook payload - " f"{validation_summary}"
+                    ),
                 )
             else:
                 logger.error("Failed to process webhook", exc_info=exc)
@@ -225,11 +251,14 @@ def create_app() -> FastAPI:
                 return {"status": "success", "message": result}
             except ValueError as e:
                 logger.error(
-                    "Service initialization failed during refresh", error=str(e)
+                    "Service initialization failed during refresh",
+                    error=str(e),
                 )
                 return {
                     "status": "error",
-                    "message": "Service configuration error - check API tokens",
+                    "message": (
+                        "Service configuration error - check API tokens"
+                    ),
                 }
 
         except Exception as exc:

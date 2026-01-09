@@ -107,7 +107,7 @@ class TestSettings:
     )
     def test_settings_from_environment(self):
         """Test settings loaded from environment variables."""
-        settings = Settings()
+        settings = Settings(_env_file=None)
 
         assert settings.up_api_token == "env_up_token"
         assert settings.ynab_api_token == "env_ynab_token"
@@ -128,8 +128,10 @@ class TestSettings:
     def test_settings_case_insensitive(self):
         """Test that environment variables are case insensitive."""
         # This tests the case_sensitive=False setting in model_config
-        with patch.dict(os.environ, {"up_api_token": "lowercase_token"}, clear=False):
-            settings = Settings()
+        with patch.dict(
+            os.environ, {"up_api_token": "lowercase_token"}, clear=False
+        ):
+            settings = Settings(_env_file=None)
             # The lowercase version should be found (case_sensitive=False)
             assert settings.up_api_token == "lowercase_token"
 

@@ -8,13 +8,13 @@ Automatically sync transactions from [Up Bank](https://up.com.au/) to [YNAB](htt
 
 ## Features
 
-- 🔄 **Real-time sync** via Up Bank webhooks
-- 🏷️ **Smart categorization** based on historical payee mappings
-- 🚫 **Transfer filtering** to avoid duplicate internal transfers
-- 📊 **Health monitoring** with built-in endpoints
-- 🐳 **Docker ready** with production and development configurations
-- 🧪 **Comprehensive testing** with >90% coverage
-- 🔒 **Security focused** with non-root containers and vulnerability scanning
+- **Real-time sync** via Up Bank webhooks
+- **Smart categorization** based on historical payee mappings
+- **Transfer filtering** to avoid duplicate internal transfers
+- **Health monitoring** with built-in endpoints
+- **Docker ready** with production and development configurations
+- **Comprehensive testing** with >90% coverage
+- **Security focused** with non-root containers and vulnerability scanning
 
 ## Quick Start
 
@@ -43,7 +43,7 @@ Automatically sync transactions from [Up Bank](https://up.com.au/) to [YNAB](htt
    WEBHOOK_URL=https://your-domain.com/webhook
    ```
 
-   **⚠️ Important:** All API tokens are required for the application to function properly. The application will show configuration errors if tokens are missing or invalid.
+   **Important:** All API tokens are required for the application to function properly. The application will show configuration errors if tokens are missing or invalid.
 
 3. **Start production environment:**
    ```bash
@@ -197,13 +197,3 @@ flake8 .
 - Secure API token handling
 - Input validation with Pydantic
 - No secrets in logs or error messages
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-- 📖 [Documentation](https://github.com/brodie/up-to-ynab/wiki)
-- 🐛 [Issue Tracker](https://github.com/brodie/up-to-ynab/issues)
-- 💬 [Discussions](https://github.com/brodie/up-to-ynab/discussions)
