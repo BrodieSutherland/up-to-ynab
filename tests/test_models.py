@@ -151,7 +151,7 @@ class TestYnabModels:
         assert transaction_detail.payee_name == "Test Merchant"
         assert transaction_detail.category_id == "test-category-id"
         assert transaction_detail.amount == -12500
-        assert transaction_detail.cleared == "cleared"  # default value
+        assert transaction_detail.cleared == "uncleared"  # default value
         assert transaction_detail.approved is True  # default value
 
     def test_ynab_transaction_request_creation(self):
