@@ -82,13 +82,15 @@ jobs:
         github.event_name == 'workflow_run' &&
         steps.metadata.outputs.update-type == 'version-update:semver-patch' &&
         steps.pr-info.outputs.number != ''
+      env:
+        PR_NUMBER_FROM_STEP: ${{ steps.pr-info.outputs.number }}
       run: |
         if [ "${{ github.event.workflow_run.conclusion }}" == "success" ]; then
           echo "ci_passed=true" >> $GITHUB_OUTPUT
-          echo "✓ CI passed for PR #${{ steps.pr-info.outputs.number }}"
+          echo "✓ CI passed for PR #$PR_NUMBER_FROM_STEP"
         else
           echo "ci_passed=false" >> $GITHUB_OUTPUT
-          echo "✗ CI did not pass for PR #${{ steps.pr-info.outputs.number }}"
+          echo "✗ CI did not pass for PR #$PR_NUMBER_FROM_STEP"
           exit 1
         fi
 
