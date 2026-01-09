@@ -64,15 +64,11 @@ async def lifespan(app: FastAPI):
         # Setup webhook if URL is provided
         settings = get_settings()
         if settings.webhook_url:
-            webhook_exists = await up_service.ping_webhook(
-                settings.webhook_url
-            )
+            webhook_exists = await up_service.ping_webhook(settings.webhook_url)
             if webhook_exists:
                 logger.info("Webhook is ready", url=settings.webhook_url)
             else:
-                logger.error(
-                    "Failed to setup webhook", url=settings.webhook_url
-                )
+                logger.error("Failed to setup webhook", url=settings.webhook_url)
         else:
             logger.info("No webhook URL configured - webhook setup skipped")
 
@@ -80,9 +76,7 @@ async def lifespan(app: FastAPI):
         try:
             await transaction_service.refresh_data()
         except Exception as e:
-            logger.error(
-                "Failed to refresh category data on startup", error=str(e)
-            )
+            logger.error("Failed to refresh category data on startup", error=str(e))
 
     except ValueError as e:
         logger.error(
@@ -196,24 +190,17 @@ def create_app() -> FastAPI:
         """Handle incoming webhook events from Up Bank."""
         try:
 
-            logger.info(
-                "Received event", event_type=webhook_event.data.event_type
-            )
+            logger.info("Received event", event_type=webhook_event.data.event_type)
 
             # Process the webhook event
             try:
                 transaction_service = TransactionService()
-                result = await transaction_service.process_webhook_event(
-                    webhook_event
-                )
+                result = await transaction_service.process_webhook_event(webhook_event)
                 logger.info("Event processed", result=result)
                 return WebhookResponse(status="processed", result=result)
             except ValueError as e:
                 logger.error(
-                    (
-                        "Service initialization failed during "
-                        "webhook processing"
-                    ),
+                    ("Service initialization failed during " "webhook processing"),
                     error=str(e),
                 )
                 return WebhookResponse(
@@ -227,9 +214,7 @@ def create_app() -> FastAPI:
                 validation_summary = format_validation_errors(exc)
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Invalid webhook payload - " f"{validation_summary}"
-                    ),
+                    detail=(f"Invalid webhook payload - " f"{validation_summary}"),
                 )
             else:
                 logger.error("Failed to process webhook", exc_info=exc)
@@ -256,9 +241,7 @@ def create_app() -> FastAPI:
                 )
                 return {
                     "status": "error",
-                    "message": (
-                        "Service configuration error - check API tokens"
-                    ),
+                    "message": ("Service configuration error - check API tokens"),
                 }
 
         except Exception as exc:

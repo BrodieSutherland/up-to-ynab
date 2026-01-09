@@ -40,9 +40,7 @@ class TestTransactionFilter:
         self, transaction_filter, sample_up_transaction
     ):
         """Test internal transfer detection - normal transaction."""
-        is_transfer = transaction_filter.is_internal_transfer(
-            sample_up_transaction
-        )
+        is_transfer = transaction_filter.is_internal_transfer(sample_up_transaction)
 
         assert is_transfer is False
 
@@ -131,9 +129,7 @@ class TestTransactionFilter:
 
         transaction = UpTransaction(**transaction_data["data"])
 
-        should_process = transaction_filter.should_process_transaction(
-            transaction
-        )
+        should_process = transaction_filter.should_process_transaction(transaction)
 
         assert should_process is False
 
@@ -143,9 +139,7 @@ class TestTransactionFilter:
         """Test getting filtered reason for internal transfer."""
         # Modify transaction to be internal transfer
         transaction_data = sample_up_transaction_data.copy()
-        transaction_data["data"]["attributes"][
-            "description"
-        ] = "Transfer to Savings"
+        transaction_data["data"]["attributes"]["description"] = "Transfer to Savings"
 
         transaction = UpTransaction(**transaction_data["data"])
 

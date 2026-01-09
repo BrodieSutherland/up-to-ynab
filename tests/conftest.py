@@ -135,9 +135,7 @@ def sample_up_transaction_data():
                 "createdAt": "2024-01-01T12:00:00+00:00",
             },
             "relationships": {
-                "account": {
-                    "data": {"type": "accounts", "id": "test-account-id"}
-                },
+                "account": {"data": {"type": "accounts", "id": "test-account-id"}},
                 "category": None,
                 "parentCategory": None,
                 "tags": None,

@@ -13,9 +13,7 @@ class TestYnabService:
     @pytest.fixture
     def ynab_service(self, test_settings):
         """Create YnabService instance with test settings."""
-        with patch(
-            "services.ynab_service.get_settings", return_value=test_settings
-        ):
+        with patch("services.ynab_service.get_settings", return_value=test_settings):
             return YnabService()
 
     @pytest.fixture
@@ -39,9 +37,7 @@ class TestYnabService:
             mock_post = mock_client.return_value.__aenter__.return_value.post
             mock_post.return_value = mock_response
 
-            result = await ynab_service.create_transaction(
-                sample_up_transaction
-            )
+            result = await ynab_service.create_transaction(sample_up_transaction)
 
             assert result is not None
             assert result.id == "test-ynab-transaction-id"
@@ -57,9 +53,7 @@ class TestYnabService:
         """Test transaction creation with category assignment."""
         # Modify response to include category
         response_data = sample_ynab_transaction_response.copy()
-        response_data["data"]["transaction"][
-            "category_id"
-        ] = "test-category-id"
+        response_data["data"]["transaction"]["category_id"] = "test-category-id"
 
         mock_response = Mock()
         mock_response.json.return_value = response_data
@@ -92,16 +86,12 @@ class TestYnabService:
             mock_post = mock_client.return_value.__aenter__.return_value.post
             mock_post.return_value = mock_response
 
-            result = await ynab_service.create_transaction(
-                sample_up_transaction
-            )
+            result = await ynab_service.create_transaction(sample_up_transaction)
 
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_budget_success(
-        self, ynab_service, sample_ynab_budget_data
-    ):
+    async def test_get_budget_success(self, ynab_service, sample_ynab_budget_data):
         """Test successful budget retrieval."""
         mock_response = Mock()
         mock_response.json.return_value = sample_ynab_budget_data

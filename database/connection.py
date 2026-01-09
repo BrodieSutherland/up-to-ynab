@@ -21,9 +21,7 @@ class DatabaseManager:
         self.engine = create_async_engine(
             self.settings.database_url,
             # SQLite specific settings
-            poolclass=(
-                StaticPool if "sqlite" in self.settings.database_url else None
-            ),
+            poolclass=(StaticPool if "sqlite" in self.settings.database_url else None),
             connect_args=(
                 {"check_same_thread": False}
                 if "sqlite" in self.settings.database_url
