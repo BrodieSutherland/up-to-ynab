@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 env:
-  PYTHON_VERSION: 3.11
+  PYTHON_VERSION: 3.13.5
 
 permissions:
   contents: read
@@ -31,14 +31,11 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest-cov
+        pip install pytest-cov black isort flake8
 
     - name: Run linting
       working-directory: .
       run: |
-        # Install linting tools
-        pip install black isort flake8
-
         # Check code formatting
         black --check --diff .
 
@@ -94,11 +91,8 @@ jobs:
           -p 5001:5001 \
           up-to-ynab:test
 
-        # Wait for container to start
-        sleep 10
-
         # Test health endpoint
-        curl -f http://localhost:5001/health || exit 1
+        curl -f http://localhost:5001/health --retry 5 || exit 1
 
         # Clean up
         docker stop test-container
