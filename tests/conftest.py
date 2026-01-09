@@ -5,7 +5,11 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import StaticPool
 
 from app import create_app
@@ -66,7 +70,9 @@ async def test_db_engine():
 
 
 @pytest_asyncio.fixture
-async def test_db_session(test_db_engine) -> AsyncGenerator[AsyncSession, None]:
+async def test_db_session(
+    test_db_engine,
+) -> AsyncGenerator[AsyncSession, None]:
     """Create a test database session."""
     async_session = async_sessionmaker(
         test_db_engine,
@@ -119,7 +125,9 @@ def sample_up_transaction_data():
                 "createdAt": "2024-01-01T12:00:00+00:00",
             },
             "relationships": {
-                "account": {"data": {"type": "accounts", "id": "test-account-id"}},
+                "account": {
+                    "data": {"type": "accounts", "id": "test-account-id"}
+                },
                 "category": None,
                 "parentCategory": None,
                 "tags": None,
@@ -143,7 +151,10 @@ def sample_up_webhook_event_data():
             },
             "relationships": {
                 "transaction": {
-                    "data": {"type": "transactions", "id": "test-transaction-id"}
+                    "data": {
+                        "type": "transactions",
+                        "id": "test-transaction-id",
+                    }
                 }
             },
         }

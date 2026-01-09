@@ -52,9 +52,14 @@ class YnabService:
             import_id=self.create_import_id(up_transaction.id),
         )
 
-        transaction_request = YnabTransactionRequest(transaction=transaction_detail)
+        transaction_request = YnabTransactionRequest(
+            transaction=transaction_detail
+        )
 
-        url = f"{self.base_url}/budgets/{self.settings.ynab_budget_id}/transactions"
+        url = (
+            f"{self.base_url}/budgets/{self.settings.ynab_budget_id}"
+            f"/transactions"
+        )
 
         try:
             async with httpx.AsyncClient() as client:
@@ -153,9 +158,11 @@ class YnabService:
         return budget.payees
 
     async def find_category_for_payee(
-        self, payee_name: str, payee_category_mappings: Dict[str, str]
+        self,
+        payee_name: str,
+        payee_category_mappings: Dict[str, str],
     ) -> Optional[str]:
-        """Find the appropriate category for a payee based on historical mappings."""
+        """Find category for payee based on historical mappings."""
         # Check if we have a stored mapping for this payee
         category_id = payee_category_mappings.get(payee_name)
 
@@ -174,7 +181,8 @@ class YnabService:
         """Create a unique import ID for YNAB (max 36 characters)."""
         import hashlib
 
-        # For UUIDs (36 chars), just use the UUID without prefix to stay within limit
+        # For UUIDs (36 chars), just use the UUID without prefix to stay within
+        # limit
         if len(up_transaction_id) == 36 and "-" in up_transaction_id:
             return up_transaction_id
 
@@ -183,6 +191,7 @@ class YnabService:
         if len(prefixed_id) <= 36:
             return prefixed_id
 
-        # For longer IDs, use a hash to ensure uniqueness while staying under limit
+        # For longer IDs, use a hash to ensure uniqueness while staying under
+        # limit
         hash_hex = hashlib.sha256(up_transaction_id.encode()).hexdigest()
         return hash_hex[:36]  # Use first 36 characters of hash

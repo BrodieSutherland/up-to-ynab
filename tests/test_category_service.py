@@ -27,7 +27,9 @@ class TestCategoryService:
             patch.object(
                 category_service.ynab_service, "get_payees"
             ) as mock_get_payees,
-            patch("database.connection.db_manager.get_session") as mock_session,
+            patch(
+                "database.connection.db_manager.get_session"
+            ) as mock_session,
         ):
 
             # Setup mocks
@@ -58,7 +60,9 @@ class TestCategoryService:
             mock_get_payees.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_get_payee_category_mappings(self, category_service, test_db_session):
+    async def test_get_payee_category_mappings(
+        self, category_service, test_db_session
+    ):
         """Test retrieving payee category mappings."""
         # Setup test data
         mapping = PayeeCategoryMapping(
@@ -69,7 +73,9 @@ class TestCategoryService:
         test_db_session.add(mapping)
         await test_db_session.commit()
 
-        with patch("database.connection.db_manager.get_session") as mock_session:
+        with patch(
+            "database.connection.db_manager.get_session"
+        ) as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             mappings = await category_service.get_payee_category_mappings()
@@ -82,7 +88,9 @@ class TestCategoryService:
         self, category_service, test_db_session
     ):
         """Test creating new payee category mapping."""
-        with patch("database.connection.db_manager.get_session") as mock_session:
+        with patch(
+            "database.connection.db_manager.get_session"
+        ) as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             await category_service.update_payee_category_mapping(
@@ -118,7 +126,9 @@ class TestCategoryService:
         test_db_session.add(mapping)
         await test_db_session.commit()
 
-        with patch("database.connection.db_manager.get_session") as mock_session:
+        with patch(
+            "database.connection.db_manager.get_session"
+        ) as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             await category_service.update_payee_category_mapping(
@@ -144,7 +154,9 @@ class TestCategoryService:
         self, category_service, test_db_session
     ):
         """Test recording processed transaction."""
-        with patch("database.connection.db_manager.get_session") as mock_session:
+        with patch(
+            "database.connection.db_manager.get_session"
+        ) as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             await category_service.record_processed_transaction(
@@ -176,7 +188,9 @@ class TestCategoryService:
         self, category_service, test_db_session
     ):
         """Test recording failed transaction with error message."""
-        with patch("database.connection.db_manager.get_session") as mock_session:
+        with patch(
+            "database.connection.db_manager.get_session"
+        ) as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             await category_service.record_processed_transaction(
@@ -220,7 +234,9 @@ class TestCategoryService:
         test_db_session.add(processed_tx)
         await test_db_session.commit()
 
-        with patch("database.connection.db_manager.get_session") as mock_session:
+        with patch(
+            "database.connection.db_manager.get_session"
+        ) as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
             is_processed = await category_service.is_transaction_processed(
@@ -234,22 +250,31 @@ class TestCategoryService:
         self, category_service, test_db_session
     ):
         """Test checking if transaction is processed - doesn't exist."""
-        with patch("database.connection.db_manager.get_session") as mock_session:
+        with patch(
+            "database.connection.db_manager.get_session"
+        ) as mock_session:
             mock_session.return_value.__aenter__.return_value = test_db_session
 
-            is_processed = await category_service.is_transaction_processed("new-tx-id")
+            is_processed = await category_service.is_transaction_processed(
+                "new-tx-id"
+            )
 
             assert is_processed is False
 
     @pytest.mark.asyncio
-    async def test_is_transaction_processed_error_handling(self, category_service):
+    async def test_is_transaction_processed_error_handling(
+        self, category_service
+    ):
         """Test error handling in transaction processed check."""
-        with patch("database.connection.db_manager.get_session") as mock_session:
-            mock_session.return_value.__aenter__.return_value.execute.side_effect = (
-                Exception("DB Error")
-            )
+        with patch(
+            "database.connection.db_manager.get_session"
+        ) as mock_session:
+            execute_mock = mock_session.return_value.__aenter__.return_value
+            execute_mock.execute.side_effect = Exception("DB Error")
 
             # Should return False on error (err on side of caution)
-            is_processed = await category_service.is_transaction_processed("test-tx-id")
+            is_processed = await category_service.is_transaction_processed(
+                "test-tx-id"
+            )
 
             assert is_processed is False

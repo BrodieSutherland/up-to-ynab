@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 from sqlalchemy import Boolean, DateTime, String, Text
@@ -17,12 +17,16 @@ class PayeeCategoryMapping(Base):
     __tablename__ = "payee_category_mappings"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    payee_name: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    payee_name: Mapped[str] = mapped_column(
+        String(255), unique=True, index=True
+    )
     category_id: Mapped[str] = mapped_column(String(50))
     category_name: Mapped[str] = mapped_column(String(255))
-    first_seen: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    first_seen: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now(UTC)
+    )
     last_updated: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+        DateTime, default=datetime.now(UTC), onupdate=datetime.now(UTC)
     )
     transaction_count: Mapped[int] = mapped_column(default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -40,14 +44,18 @@ class ProcessedTransaction(Base):
     __tablename__ = "processed_transactions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    up_transaction_id: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    up_transaction_id: Mapped[str] = mapped_column(
+        String(50), unique=True, index=True
+    )
     ynab_transaction_id: Mapped[Optional[str]] = mapped_column(
         String(50), nullable=True
     )
     payee_name: Mapped[str] = mapped_column(String(255))
     amount: Mapped[int] = mapped_column()  # In milliunits
     transaction_date: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD
-    processed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    processed_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.now(UTC)
+    )
     status: Mapped[str] = mapped_column(
         String(20), default="processed"
     )  # processed, failed, skipped

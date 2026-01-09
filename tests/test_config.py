@@ -26,7 +26,7 @@ class TestSettings:
 
         # Test defaults
         assert settings.port == 5001
-        assert settings.debug_mode is False
+        assert settings.debug_mode
         assert settings.up_base_url == "https://api.up.com.au/api/v1/"
         assert settings.ynab_base_url == "https://api.youneedabudget.com/v1/"
         assert settings.database_url == "sqlite+aiosqlite:///./up_to_ynab.db"
@@ -128,7 +128,9 @@ class TestSettings:
     def test_settings_case_insensitive(self):
         """Test that environment variables are case insensitive."""
         # This tests the case_sensitive=False setting in model_config
-        with patch.dict(os.environ, {"up_api_token": "lowercase_token"}, clear=False):
+        with patch.dict(
+            os.environ, {"up_api_token": "lowercase_token"}, clear=False
+        ):
             settings = Settings()
             # The lowercase version should be found (case_sensitive=False)
             assert settings.up_api_token == "lowercase_token"

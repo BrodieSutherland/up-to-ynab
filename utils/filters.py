@@ -23,8 +23,8 @@ class TransactionFilter:
         # Filter out internal transfers
         if self.is_internal_transfer(transaction):
             return False
-
-        # Could add more filters here (e.g., amount thresholds, account types, etc.)
+        
+        # Other filters?
 
         return True
 
