@@ -52,14 +52,9 @@ class YnabService:
             import_id=self.create_import_id(up_transaction.id),
         )
 
-        transaction_request = YnabTransactionRequest(
-            transaction=transaction_detail
-        )
+        transaction_request = YnabTransactionRequest(transaction=transaction_detail)
 
-        url = (
-            f"{self.base_url}/budgets/{self.settings.ynab_budget_id}"
-            f"/transactions"
-        )
+        url = f"{self.base_url}/budgets/{self.settings.ynab_budget_id}" f"/transactions"
 
         try:
             async with httpx.AsyncClient() as client:

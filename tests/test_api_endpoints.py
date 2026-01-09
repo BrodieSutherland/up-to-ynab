@@ -71,9 +71,7 @@ class TestAPIEndpoints:
         """Test webhook endpoint when processing raises an exception."""
         # Setup mock to raise exception
         mock_service = AsyncMock()
-        mock_service.process_webhook_event.side_effect = Exception(
-            "Processing failed"
-        )
+        mock_service.process_webhook_event.side_effect = Exception("Processing failed")
         mock_transaction_service_class.return_value = mock_service
 
         response = client.post("/webhook", json=sample_up_webhook_event_data)
@@ -83,9 +81,7 @@ class TestAPIEndpoints:
         assert "Invalid webhook payload" in data["detail"]
 
     @patch("services.transaction_service.TransactionService")
-    def test_refresh_endpoint_success(
-        self, mock_transaction_service_class, client
-    ):
+    def test_refresh_endpoint_success(self, mock_transaction_service_class, client):
         """Test refresh endpoint with successful data refresh."""
         # Setup mock
         mock_service = AsyncMock()
@@ -100,9 +96,7 @@ class TestAPIEndpoints:
         assert data["message"] == "Data refreshed successfully"
 
     @patch("app.TransactionService")
-    def test_refresh_endpoint_failure(
-        self, mock_transaction_service_class, client
-    ):
+    def test_refresh_endpoint_failure(self, mock_transaction_service_class, client):
         """Test refresh endpoint when refresh fails."""
         # Setup mock to raise exception
         mock_service = AsyncMock()
@@ -181,18 +175,14 @@ class TestAPIStartupShutdown:
         mock_up_service_instance.ping_webhook.return_value = True
 
         mock_transaction_service_instance = AsyncMock()
-        mock_transaction_service.return_value = (
-            mock_transaction_service_instance
-        )
+        mock_transaction_service.return_value = mock_transaction_service_instance
         mock_transaction_service_instance.refresh_data.return_value = "Success"
 
         mock_create_tables.return_value = None
 
         # Create app to trigger startup
         with patch("app.get_settings") as mock_settings:
-            mock_settings.return_value.webhook_url = (
-                "https://test.example.com/webhook"
-            )
+            mock_settings.return_value.webhook_url = "https://test.example.com/webhook"
 
             app = create_app()
             client = TestClient(app)

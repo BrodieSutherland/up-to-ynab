@@ -128,9 +128,7 @@ class TestSettings:
     def test_settings_case_insensitive(self):
         """Test that environment variables are case insensitive."""
         # This tests the case_sensitive=False setting in model_config
-        with patch.dict(
-            os.environ, {"up_api_token": "lowercase_token"}, clear=False
-        ):
+        with patch.dict(os.environ, {"up_api_token": "lowercase_token"}, clear=False):
             settings = Settings(_env_file=None)
             # The lowercase version should be found (case_sensitive=False)
             assert settings.up_api_token == "lowercase_token"

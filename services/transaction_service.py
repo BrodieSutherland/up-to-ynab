@@ -18,9 +18,7 @@ class TransactionService:
         self.category_service = CategoryService()
         self.transaction_filter = TransactionFilter()
 
-    async def process_webhook_event(
-        self, webhook_event: UpWebhookEvent
-    ) -> str:
+    async def process_webhook_event(self, webhook_event: UpWebhookEvent) -> str:
         """Process a webhook event from Up Bank."""
         logger.info(
             "Processing webhook event",
@@ -38,12 +36,8 @@ class TransactionService:
             return "Event ignored - no transaction ID"
 
         # Check if already processed
-        if await self.category_service.is_transaction_processed(
-            transaction_id
-        ):
-            logger.info(
-                "Transaction already processed", transaction_id=transaction_id
-            )
+        if await self.category_service.is_transaction_processed(transaction_id):
+            logger.info("Transaction already processed", transaction_id=transaction_id)
             return f"Transaction {transaction_id} already processed"
 
         # Fetch the transaction from Up
@@ -75,12 +69,8 @@ class TransactionService:
 
         try:
             # Apply filters
-            if not self.transaction_filter.should_process_transaction(
-                up_transaction
-            ):
-                reason = self.transaction_filter.get_filtered_reason(
-                    up_transaction
-                )
+            if not self.transaction_filter.should_process_transaction(up_transaction):
+                reason = self.transaction_filter.get_filtered_reason(up_transaction)
                 logger.info(
                     "Transaction filtered out",
                     transaction_id=up_transaction.id,
@@ -100,9 +90,7 @@ class TransactionService:
                 return f"Transaction filtered: {reason}"
 
             # Get payee category mappings
-            payee_mappings = (
-                await self.category_service.get_payee_category_mappings()
-            )
+            payee_mappings = await self.category_service.get_payee_category_mappings()
 
             # Find category for this payee
             category_id = await self.ynab_service.find_category_for_payee(
@@ -150,8 +138,7 @@ class TransactionService:
                 )
 
                 return (
-                    f"Failed to create YNAB transaction for "
-                    f"{up_transaction.payee}"
+                    f"Failed to create YNAB transaction for " f"{up_transaction.payee}"
                 )
 
         except Exception as e:

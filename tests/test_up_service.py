@@ -13,9 +13,7 @@ class TestUpService:
     @pytest.fixture
     def up_service(self, test_settings):
         """Create UpService instance with test settings."""
-        with patch(
-            "services.up_service.get_settings", return_value=test_settings
-        ):
+        with patch("services.up_service.get_settings", return_value=test_settings):
             return UpService()
 
     @pytest.mark.asyncio
@@ -31,9 +29,7 @@ class TestUpService:
             mock_get = mock_client.return_value.__aenter__.return_value.get
             mock_get.return_value = mock_response
 
-            transaction = await up_service.get_transaction(
-                "test-transaction-id"
-            )
+            transaction = await up_service.get_transaction("test-transaction-id")
 
             assert transaction is not None
             assert transaction.id == "test-transaction-id"
@@ -60,9 +56,7 @@ class TestUpService:
     @pytest.mark.asyncio
     async def test_create_webhook_success(self, up_service):
         """Test successful webhook creation."""
-        webhook_response = {
-            "data": {"id": "test-webhook-id", "type": "webhooks"}
-        }
+        webhook_response = {"data": {"id": "test-webhook-id", "type": "webhooks"}}
 
         mock_response = Mock()
         mock_response.json.return_value = webhook_response
@@ -72,9 +66,7 @@ class TestUpService:
             mock_post = mock_client.return_value.__aenter__.return_value.post
             mock_post.return_value = mock_response
 
-            result = await up_service.create_webhook(
-                "https://test.example.com/webhook"
-            )
+            result = await up_service.create_webhook("https://test.example.com/webhook")
 
             assert result is True
 
@@ -144,9 +136,7 @@ class TestUpService:
             mock_get = mock_client.return_value.__aenter__.return_value.get
             mock_get.return_value = mock_response
 
-            exists = await up_service.webhook_exists(
-                "https://test.example.com/webhook"
-            )
+            exists = await up_service.webhook_exists("https://test.example.com/webhook")
 
             assert exists is True
 
@@ -163,9 +153,7 @@ class TestUpService:
             mock_get = mock_client.return_value.__aenter__.return_value.get
             mock_get.return_value = mock_response
 
-            exists = await up_service.webhook_exists(
-                "https://test.example.com/webhook"
-            )
+            exists = await up_service.webhook_exists("https://test.example.com/webhook")
 
             assert exists is False
 

@@ -57,8 +57,7 @@ class CategoryService:
                 mappings = result.scalars().all()
 
                 mapping_dict = {
-                    mapping.payee_name: mapping.category_id
-                    for mapping in mappings
+                    mapping.payee_name: mapping.category_id for mapping in mappings
                 }
 
                 logger.info(

@@ -21,10 +21,7 @@ class UpService:
         self.base_url = self.settings.up_base_url.rstrip("/")
 
         # Validate Up API token is present
-        if (
-            not self.settings.up_api_token
-            or self.settings.up_api_token.strip() == ""
-        ):
+        if not self.settings.up_api_token or self.settings.up_api_token.strip() == "":
             raise ValueError("Up API token is required but not provided")
 
         self.headers = {
@@ -34,9 +31,7 @@ class UpService:
 
         logger.info(self.headers)
 
-    async def get_transaction(
-        self, transaction_id: str
-    ) -> Optional[UpTransaction]:
+    async def get_transaction(self, transaction_id: str) -> Optional[UpTransaction]:
         """Fetch a transaction from Up API."""
         url = f"{self.base_url}/transactions/{transaction_id}"
 
@@ -80,9 +75,7 @@ class UpService:
 
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    url, json=payload, headers=self.headers
-                )
+                response = await client.post(url, json=payload, headers=self.headers)
                 response.raise_for_status()
 
                 webhook_data = response.json()
@@ -166,9 +159,7 @@ class UpService:
         """Check if transaction is an internal transfer."""
         return transaction.is_internal_transfer
 
-    def should_process_transaction(
-        self, webhook_event: UpWebhookEvent
-    ) -> bool:
+    def should_process_transaction(self, webhook_event: UpWebhookEvent) -> bool:
         """Determine if a webhook event should be processed."""
         # Only process transaction creation events
         if webhook_event.data.event_type != "TRANSACTION_CREATED":

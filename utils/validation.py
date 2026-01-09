@@ -15,9 +15,7 @@ def format_validation_errors(exc: Exception) -> str:
         field_path = " -> ".join(str(loc) for loc in error["loc"])
         error_msg = error["msg"]
         error_type = error["type"]
-        error_details.append(
-            f"Field '{field_path}': {error_msg} (type: {error_type})"
-        )
+        error_details.append(f"Field '{field_path}': {error_msg} (type: {error_type})")
 
     return "; ".join(error_details)
 
