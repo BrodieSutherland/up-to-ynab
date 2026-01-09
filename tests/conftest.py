@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import AsyncGenerator, Generator
 from unittest.mock import AsyncMock
 
@@ -12,9 +13,15 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from app import create_app
 from database.models import Base
 from utils.config import Settings
+
+# Set test environment variables before importing app
+# This prevents validation errors when database.connection initializes
+os.environ.setdefault("UP_API_TOKEN", "test_up_token")
+os.environ.setdefault("YNAB_API_TOKEN", "test_ynab_token")
+os.environ.setdefault("YNAB_BUDGET_ID", "test_budget_id")
+os.environ.setdefault("YNAB_ACCOUNT_ID", "test_account_id")
 
 # Test database URL
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -87,6 +94,9 @@ async def test_db_session(
 @pytest.fixture
 def client() -> TestClient:
     """Create a test client for the FastAPI app."""
+    # Lazy import to ensure environment variables are set first
+    from app import create_app
+
     app = create_app()
     return TestClient(app)
 

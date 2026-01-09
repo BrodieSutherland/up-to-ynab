@@ -26,7 +26,7 @@ class TestSettings:
 
         # Test defaults
         assert settings.port == 5001
-        assert settings.debug_mode
+        assert settings.debug_mode is False
         assert settings.up_base_url == "https://api.up.com.au/api/v1/"
         assert settings.ynab_base_url == "https://api.youneedabudget.com/v1/"
         assert settings.database_url == "sqlite+aiosqlite:///./up_to_ynab.db"
@@ -107,7 +107,7 @@ class TestSettings:
     )
     def test_settings_from_environment(self):
         """Test settings loaded from environment variables."""
-        settings = Settings()
+        settings = Settings(_env_file=None)
 
         assert settings.up_api_token == "env_up_token"
         assert settings.ynab_api_token == "env_ynab_token"
@@ -131,7 +131,7 @@ class TestSettings:
         with patch.dict(
             os.environ, {"up_api_token": "lowercase_token"}, clear=False
         ):
-            settings = Settings()
+            settings = Settings(_env_file=None)
             # The lowercase version should be found (case_sensitive=False)
             assert settings.up_api_token == "lowercase_token"
 
