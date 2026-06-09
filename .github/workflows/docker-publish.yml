@@ -2,7 +2,7 @@ name: Docker Publish
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
     tags: [ 'v*' ]
   workflow_dispatch:
 
@@ -11,7 +11,11 @@ env:
   IMAGE_NAME: up-to-ynab
 
 jobs:
-  build-and-push:
+  # ─────────────────────────────────────────────────────────────────────────
+  # Publish :test image on develop pushes
+  # ─────────────────────────────────────────────────────────────────────────
+  publish-test:
+    if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -25,10 +29,120 @@ jobs:
       uses: docker/setup-buildx-action@v3
 
     - name: Log in to Docker Hub
-      if: github.event_name != 'pull_request'
       uses: docker/login-action@v3
       with:
-        registry: ${{ env.REGISTRY }}
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+    - name: Build and push :test image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        # Tag as both :test and :develop for traceability
+        tags: |
+          ${{ env.REGISTRY }}/${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}:test
+          ${{ env.REGISTRY }}/${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}:develop
+        # Embed git SHA as image label — used by promote.yml for safety check
+        labels: |
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64,linux/arm64
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Promote :test → :latest on main push (no rebuild)
+  # ─────────────────────────────────────────────────────────────────────────
+  promote-to-latest:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+    - name: Verify :test image SHA matches develop HEAD
+      run: |
+        IMAGE="${{ env.REGISTRY }}/${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}"
+
+        # Fetch the SHA label baked into the :test image
+        TEST_SHA=$(docker buildx imagetools inspect "${IMAGE}:test" \
+          --format '{{ json .Manifest.Annotations }}' 2>/dev/null \
+          | jq -r '."org.opencontainers.image.revision" // empty' 2>/dev/null || true)
+
+        # Fall back to manifest inspect labels if buildx annotations aren't available
+        if [ -z "$TEST_SHA" ]; then
+          TEST_SHA=$(docker manifest inspect "${IMAGE}:test" 2>/dev/null \
+            | jq -r '.labels["org.opencontainers.image.revision"] // empty' 2>/dev/null || true)
+        fi
+
+        # Get the HEAD commit of develop
+        DEVELOP_SHA=$(git ls-remote origin refs/heads/develop | cut -f1)
+
+        echo "::notice::test image SHA: ${TEST_SHA:-unknown}"
+        echo "::notice::develop HEAD:   ${DEVELOP_SHA}"
+
+        if [ -z "$TEST_SHA" ]; then
+          echo "::warning::Could not read SHA from :test image labels — skipping check."
+          echo "::warning::Ensure the develop push workflow embeds org.opencontainers.image.revision."
+          exit 0
+        fi
+
+        if [ "$TEST_SHA" != "$DEVELOP_SHA" ]; then
+          echo "::error::SHA mismatch! :test was built from ${TEST_SHA} but develop HEAD is ${DEVELOP_SHA}."
+          echo "::error::This means develop has been pushed to since the last :test image was built."
+          echo "::error::Push to develop and wait for CI to re-build :test before promoting."
+          exit 1
+        fi
+
+        echo "SHA check passed — :test image matches develop HEAD."
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Re-tag :test as :latest (no rebuild)
+      run: |
+        IMAGE="${{ env.REGISTRY }}/${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}"
+        # Pull the test image and push it as latest — same layers, no rebuild
+        docker buildx imagetools create \
+          --tag "${IMAGE}:latest" \
+          "${IMAGE}:test"
+        echo "::notice::Successfully promoted ${IMAGE}:test → ${IMAGE}:latest"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Publish tagged semver releases (v*)
+  # ─────────────────────────────────────────────────────────────────────────
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
         username: ${{ secrets.DOCKER_HUB_USERNAME }}
         password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
@@ -38,31 +152,18 @@ jobs:
       with:
         images: ${{ env.REGISTRY }}/${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}
         tags: |
-          type=ref,event=branch
-          type=ref,event=pr
           type=semver,pattern={{version}}
           type=semver,pattern={{major}}.{{minor}}
           type=semver,pattern={{major}}
-          type=raw,value=latest,enable={{is_default_branch}}
 
-    - name: Build and push Docker image
+    - name: Build and push release image
       uses: docker/build-push-action@v6
       with:
         context: .
         file: ./Dockerfile
-        push: ${{ github.event_name != 'pull_request' }}
+        push: true
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
         platforms: linux/amd64,linux/arm64
-
-    - name: Update Docker Hub description
-      if: github.ref == 'refs/heads/main'
-      uses: peter-evans/dockerhub-description@v5
-      with:
-        username: ${{ secrets.DOCKER_HUB_USERNAME }}
-        password: ${{ secrets.DOCKER_HUB_TOKEN }}
-        repository: ${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}
-        short-description: "Sync transactions from Up Bank to YNAB"
-        readme-filepath: ./README.md

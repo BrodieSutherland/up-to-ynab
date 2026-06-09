@@ -1,0 +1,96 @@
+name: Deploy to Test
+
+on:
+  workflow_run:
+    workflows: ["Docker Publish"]
+    branches: [develop]
+    types: [completed]
+
+jobs:
+  deploy-test:
+    # Only run if the Docker Publish workflow succeeded
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Build and sign HMAC-SHA256 deploy payload
+      id: payload
+      run: |
+        IMAGE="${{ vars.DOCKER_HUB_USERNAME || secrets.DOCKER_HUB_USERNAME }}/up-to-ynab:test"
+        CONTAINER="up-to-ynab-test"
+        SHA="${{ github.event.workflow_run.head_sha }}"
+        SHORT_SHA="${SHA:0:7}"
+        COMMIT_MSG="${{ github.event.workflow_run.head_commit.message }}"
+
+        # Build payload — single line, no trailing newline (important for HMAC)
+        PAYLOAD=$(printf '{"image":"%s","container":"%s","sha":"%s"}' \
+          "$IMAGE" "$CONTAINER" "$SHA")
+
+        # Sign with HMAC-SHA256
+        SIGNATURE="sha256=$(echo -n "${PAYLOAD}" | \
+          openssl dgst -sha256 -hmac "${{ secrets.DEPLOY_WEBHOOK_SECRET }}" | \
+          awk '{print $2}')"
+
+        # Expose for subsequent steps
+        echo "payload=${PAYLOAD}" >> "$GITHUB_OUTPUT"
+        echo "signature=${SIGNATURE}" >> "$GITHUB_OUTPUT"
+        echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+        echo "commit_msg=${COMMIT_MSG}" >> "$GITHUB_OUTPUT"
+        echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+
+    - name: Trigger Unraid test deploy
+      run: |
+        HTTP_STATUS=$(curl -s -o /tmp/deploy_response.json -w "%{http_code}" \
+          -X POST "${{ secrets.UNRAID_DEPLOY_RECEIVER_URL }}/deploy" \
+          -H "Content-Type: application/json" \
+          -H "X-Deploy-Signature: ${{ steps.payload.outputs.signature }}" \
+          -d '${{ steps.payload.outputs.payload }}')
+
+        RESPONSE=$(cat /tmp/deploy_response.json)
+        echo "Response: ${RESPONSE}"
+
+        if [ "$HTTP_STATUS" != "202" ]; then
+          echo "::error::Deploy receiver returned HTTP ${HTTP_STATUS}: ${RESPONSE}"
+          exit 1
+        fi
+
+        echo "::notice::Deploy accepted by Unraid receiver. Container update in progress."
+
+    - name: Notify Discord — test deployed
+      if: always()
+      run: |
+        if [ "${{ job.status }}" = "success" ]; then
+          COLOR=3066993
+          TITLE="🧪 Test Deployed"
+          DESC="**up-to-ynab:test** is deploying to Unraid test instance."
+        else
+          COLOR=15158332
+          TITLE="❌ Test Deploy Failed"
+          DESC="Deploy to Unraid test instance failed — check Actions logs."
+        fi
+
+        curl -s -X POST "${{ secrets.DISCORD_WEBHOOK_URL }}" \
+          -H "Content-Type: application/json" \
+          -d "$(printf '{
+            "embeds": [{
+              "title": "%s",
+              "description": "%s",
+              "color": %s,
+              "fields": [
+                {"name": "Commit", "value": "`%s`", "inline": true},
+                {"name": "Image", "value": "`%s`", "inline": true},
+                {"name": "Message", "value": "%s", "inline": false}
+              ],
+              "url": "%s"
+            }]
+          }' \
+          "$TITLE" \
+          "$DESC" \
+          "$COLOR" \
+          "${{ steps.payload.outputs.short_sha }}" \
+          "${{ steps.payload.outputs.image }}" \
+          "${{ steps.payload.outputs.commit_msg }}" \
+          "${{ github.event.workflow_run.html_url }}")"

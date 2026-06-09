@@ -1,0 +1,181 @@
+name: Promote to Production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to create GitHub Release + tag
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0  # full history needed for changelog generation
+
+    # ── Wait for docker-publish promote-to-latest job to complete ──────────
+    # The docker-publish.yml workflow also triggers on main push.
+    # We need its promote-to-latest job to finish before we deploy.
+    # Using a simple poll with a reasonable timeout.
+    - name: Wait for Docker Publish (promote-to-latest) to complete
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        echo "Waiting for Docker Publish workflow to complete on this commit..."
+        COMMIT_SHA="${{ github.sha }}"
+        TIMEOUT=300  # 5 minutes
+        INTERVAL=15
+        ELAPSED=0
+
+        while [ $ELAPSED -lt $TIMEOUT ]; do
+          STATUS=$(gh run list \
+            --workflow="docker-publish.yml" \
+            --branch=main \
+            --limit=5 \
+            --json headSha,status,conclusion \
+            | jq -r --arg sha "$COMMIT_SHA" \
+              '.[] | select(.headSha == $sha) | "\(.status):\(.conclusion)"' \
+            | head -1)
+
+          echo "Docker Publish status: ${STATUS:-not found yet}"
+
+          if echo "$STATUS" | grep -q "completed:success"; then
+            echo "Docker Publish completed successfully."
+            break
+          elif echo "$STATUS" | grep -q "completed:failure\|completed:cancelled"; then
+            echo "::error::Docker Publish workflow failed — cannot promote."
+            exit 1
+          fi
+
+          sleep $INTERVAL
+          ELAPSED=$((ELAPSED + INTERVAL))
+        done
+
+        if [ $ELAPSED -ge $TIMEOUT ]; then
+          echo "::warning::Timed out waiting for Docker Publish. Proceeding anyway."
+        fi
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_HUB_USERNAME }}
+        password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+    - name: Deploy to Unraid production
+      id: deploy
+      run: |
+        IMAGE="${{ secrets.DOCKER_HUB_USERNAME }}/up-to-ynab:latest"
+        CONTAINER="up-to-ynab"
+        SHA="${{ github.sha }}"
+
+        PAYLOAD=$(printf '{"image":"%s","container":"%s","sha":"%s"}' \
+          "$IMAGE" "$CONTAINER" "$SHA")
+
+        SIGNATURE="sha256=$(echo -n "${PAYLOAD}" | \
+          openssl dgst -sha256 -hmac "${{ secrets.DEPLOY_WEBHOOK_SECRET }}" | \
+          awk '{print $2}')"
+
+        HTTP_STATUS=$(curl -s -o /tmp/prod_deploy_response.json -w "%{http_code}" \
+          -X POST "${{ secrets.UNRAID_DEPLOY_RECEIVER_URL }}/deploy" \
+          -H "Content-Type: application/json" \
+          -H "X-Deploy-Signature: ${SIGNATURE}" \
+          -d "${PAYLOAD}")
+
+        RESPONSE=$(cat /tmp/prod_deploy_response.json)
+        echo "Response: ${RESPONSE}"
+        echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+
+        if [ "$HTTP_STATUS" != "202" ]; then
+          echo "::error::Production deploy receiver returned HTTP ${HTTP_STATUS}: ${RESPONSE}"
+          exit 1
+        fi
+
+        echo "::notice::Production deploy accepted. Container update in progress."
+
+    - name: Determine next semver tag
+      id: version
+      run: |
+        # Get the latest tag, default to v0.0.0 if none exists
+        LATEST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || echo "v0.0.0")
+        echo "Latest tag: ${LATEST_TAG}"
+
+        # Parse version components
+        MAJOR=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f1)
+        MINOR=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f2)
+        PATCH=$(echo "$LATEST_TAG" | sed 's/v//' | cut -d. -f3)
+
+        # Inspect commits since last tag for conventional commit prefixes
+        COMMITS=$(git log "${LATEST_TAG}..HEAD" --oneline 2>/dev/null || git log --oneline)
+
+        if echo "$COMMITS" | grep -qE '^[a-f0-9]+ (feat|feat!)'; then
+          # feat: bump minor, reset patch
+          MINOR=$((MINOR + 1))
+          PATCH=0
+        else
+          # fix/chore/docs/etc: bump patch
+          PATCH=$((PATCH + 1))
+        fi
+
+        NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+        echo "New version: ${NEW_TAG}"
+        echo "tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
+        echo "prev_tag=${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ steps.version.outputs.tag }}
+        name: ${{ steps.version.outputs.tag }}
+        generate_release_notes: true
+        make_latest: true
+        body: |
+          ## 🚀 Production Deployment
+
+          Promoted from `develop` → `main` and deployed to Unraid production.
+
+          **Docker image:** `${{ steps.deploy.outputs.image }}`
+          **Commit:** `${{ github.sha }}`
+
+    - name: Notify Discord — production deployed
+      if: always()
+      run: |
+        TAG="${{ steps.version.outputs.tag }}"
+        REPO="${{ github.repository }}"
+        RELEASE_URL="https://github.com/${REPO}/releases/tag/${TAG}"
+
+        if [ "${{ job.status }}" = "success" ]; then
+          COLOR=3066993
+          TITLE="🚀 Production Deployed: ${TAG}"
+          DESC="**up-to-ynab** is live on Unraid production."
+        else
+          COLOR=15158332
+          TITLE="❌ Production Promotion Failed"
+          DESC="Something went wrong promoting to production — check Actions logs."
+          RELEASE_URL="https://github.com/${REPO}/actions/runs/${{ github.run_id }}"
+        fi
+
+        curl -s -X POST "${{ secrets.DISCORD_WEBHOOK_URL }}" \
+          -H "Content-Type: application/json" \
+          -d "$(printf '{
+            "embeds": [{
+              "title": "%s",
+              "description": "%s",
+              "color": %s,
+              "fields": [
+                {"name": "Version", "value": "`%s`", "inline": true},
+                {"name": "Commit", "value": "`%s`", "inline": true},
+                {"name": "Release", "value": "[View on GitHub](%s)", "inline": false}
+              ],
+              "url": "%s"
+            }]
+          }' \
+          "$TITLE" \
+          "$DESC" \
+          "$COLOR" \
+          "$TAG" \
+          "${GITHUB_SHA:0:7}" \
+          "$RELEASE_URL" \
+          "$RELEASE_URL")"

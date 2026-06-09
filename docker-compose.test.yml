@@ -1,27 +1,25 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  up-to-ynab:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: up-to-ynab
+  up-to-ynab-test:
+    image: ${DOCKER_HUB_USERNAME:-brodiesutherland}/up-to-ynab:test
+    container_name: up-to-ynab-test
     restart: unless-stopped
     ports:
-      - "5001:5001"
+      - "5002:5001"
     environment:
       - PORT=5001
-      - DEBUG_MODE=false
+      - DEBUG_MODE=true
       - UP_API_TOKEN=${UP_API_TOKEN}
       - UP_BASE_URL=https://api.up.com.au/api/v1/
       - WEBHOOK_URL=${WEBHOOK_URL}
-      - YNAB_API_TOKEN=${YNAB_API_TOKEN}
-      - YNAB_BUDGET_ID=${YNAB_BUDGET_ID}
-      - YNAB_ACCOUNT_ID=${YNAB_ACCOUNT_ID}
+      - YNAB_API_TOKEN=${YNAB_API_TOKEN_TEST}
+      - YNAB_BUDGET_ID=${YNAB_BUDGET_ID_TEST}
+      - YNAB_ACCOUNT_ID=${YNAB_ACCOUNT_ID_TEST}
       - YNAB_BASE_URL=https://api.youneedabudget.com/v1/
       - DATABASE_URL=sqlite+aiosqlite:///./data/up_to_ynab.db
     volumes:
-      - up-to-ynab-data:/app/data
+      - up-to-ynab-test-data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
       interval: 30s
@@ -29,11 +27,11 @@ services:
       retries: 3
       start_period: 40s
     networks:
-      - up-to-ynab
+      - up-to-ynab-test
 
 networks:
-  up-to-ynab:
+  up-to-ynab-test:
     driver: bridge
 
 volumes:
-  up-to-ynab-data:
+  up-to-ynab-test-data:
