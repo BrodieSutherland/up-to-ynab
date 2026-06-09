@@ -122,6 +122,8 @@ def running_container(docker_client):
         remove=False,
         ports={"5001/tcp": HOST_PORT},
         environment=FAKE_ENV,
+        # Provide a writable /app/data via tmpfs so SQLite can create the DB
+        tmpfs={"/app/data": "size=64m"},
     )
 
     # Wait for the container to be healthy (up to 30s)
