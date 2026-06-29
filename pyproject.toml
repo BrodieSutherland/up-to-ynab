@@ -19,7 +19,7 @@ dependencies = [
     "httpx==0.28.1",
     "python-multipart==0.0.18",
     "python-dotenv==1.2.1",
-    "structlog==25.5.0",
+    "structlog==26.1.0",
 ]
 
 [project.optional-dependencies]
