@@ -5,6 +5,11 @@ on:
     branches: [ main ]
     tags: [ 'v*' ]
   workflow_dispatch:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+    branches: [ main ]
 
 env:
   REGISTRY: docker.io
@@ -13,6 +18,11 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # Only run on push to main/tags, or after CI passes on main
+    if: |
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))) ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      github.event_name == 'workflow_dispatch'
     permissions:
       contents: read
       packages: write
@@ -20,13 +30,15 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v5
+      with:
+        ref: ${{ github.event.workflow_run.head_branch || github.event.workflow_run.head_sha || github.ref }}
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
     - name: Log in to Docker Hub
       if: github.event_name != 'pull_request'
-      uses: docker/login-action@v3
+      uses: docker/login-action@v4
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ secrets.DOCKER_HUB_USERNAME }}
@@ -46,6 +58,7 @@ jobs:
           type=raw,value=latest,enable={{is_default_branch}}
 
     - name: Build and push Docker image
+      id: build
       uses: docker/build-push-action@v6
       with:
         context: .
@@ -57,8 +70,38 @@ jobs:
         cache-to: type=gha,mode=max
         platforms: linux/amd64,linux/arm64
 
+    - name: Verify pushed image
+      if: github.event_name != 'pull_request' && steps.build.outcome == 'success'
+      run: |
+        # Determine the image tag based on the event
+        if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.event_name }}" == "workflow_run" ]]; then
+          IMAGE_TAG="latest"
+        elif [[ "${{ github.ref }}" =~ ^refs/tags/v.* ]]; then
+          IMAGE_TAG="${{ github.ref_name }}"
+        else
+          IMAGE_TAG="main"
+        fi
+        
+        FULL_IMAGE="${{ env.REGISTRY }}/${{ secrets.DOCKER_HUB_USERNAME }}/${{ env.IMAGE_NAME }}:${IMAGE_TAG}"
+        
+        echo "Verifying image: ${FULL_IMAGE}"
+        
+        # Pull the image to verify it exists and is accessible
+        echo "Pulling image to verify accessibility..."
+        docker pull "${FULL_IMAGE}" || (echo "Failed to pull image" && exit 1)
+        
+        # Verify image integrity by checking it can be inspected
+        echo "Inspecting image..."
+        docker inspect "${FULL_IMAGE}" > /dev/null || (echo "Failed to inspect image" && exit 1)
+        
+        # Test that the image can run (basic smoke test)
+        echo "Running basic image verification..."
+        docker run --rm --entrypoint /bin/sh "${FULL_IMAGE}" -c "python --version && echo 'Image verification successful'" || (echo "Failed to run image" && exit 1)
+        
+        echo "✓ Image verification passed: ${FULL_IMAGE}"
+
     - name: Update Docker Hub description
-      if: github.ref == 'refs/heads/main'
+      if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_run' && github.event.workflow_run.head_branch == 'main')
       uses: peter-evans/dockerhub-description@v5
       with:
         username: ${{ secrets.DOCKER_HUB_USERNAME }}
