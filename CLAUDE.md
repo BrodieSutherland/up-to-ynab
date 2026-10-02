@@ -21,7 +21,7 @@ black . && isort . && flake8 --extend-ignore=E203,W503 .   # must pass: CI runs 
 python -m uvicorn app:app --port 5001 --reload             # needs .env (see .env.example)
 ```
 
-CI (`.github/workflows/ci.yml`) runs black/isort/flake8 checks, pytest on Python 3.11 and 3.14, a Docker build + `/health` smoke test, and Trivy.
+CI (`.github/workflows/ci.yml`) runs tests (Python 3.11 and 3.14) and black/isort/flake8 checks, a Docker build + `/health` smoke test, and Trivy. The multi-arch image (`docker-publish.yml`, a reusable workflow called as the `image` job) is built on PRs without pushing, and is published to Docker Hub only from `main` / `v*` tags after all checks pass. `CI OK` is the single required status check. Dependabot patch PRs auto-merge via a GitHub App token (secrets `AUTOMERGE_APP_ID`, `AUTOMERGE_APP_PRIVATE_KEY`) once `CI OK` passes.
 
 ## Code navigation & editing (Serena MCP)
 
