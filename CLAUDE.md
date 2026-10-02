@@ -14,13 +14,14 @@ FastAPI service that receives Up Bank webhooks and creates matching transactions
 
 ```bash
 source .venv/bin/activate          # local venv (there is also a stale venv/)
+pip install -r requirements-dev.txt   # runtime + test + lint tools
 pytest -q                          # full suite, ~1s, no network needed
 pytest tests/test_transaction_service.py -v
 black . && isort . && flake8 --extend-ignore=E203,W503 .   # must pass: CI runs --check
 python -m uvicorn app:app --port 5001 --reload             # needs .env (see .env.example)
 ```
 
-CI (`.github/workflows/ci.yml`) runs black/isort/flake8 checks, pytest on Python 3.11, a Docker build + `/health` smoke test, and Trivy.
+CI (`.github/workflows/ci.yml`) runs black/isort/flake8 checks, pytest on Python 3.11 and 3.14, a Docker build + `/health` smoke test, and Trivy.
 
 ## Code navigation & editing (Serena MCP)
 
@@ -65,12 +66,13 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 
 ## Dependencies
 
-- Pinned versions live in `pyproject.toml` (Dependabot bumps these). `requirements.txt` uses `>=` floors and is what Docker and CI actually install. Update both when adding a dependency.
-- Code uses `datetime.UTC` (Python 3.11+). `pyproject.toml` still says `>=3.9` and black targets py39 — treat 3.11 as the real minimum. Dockerfile uses 3.14.
+- `pyproject.toml`, `requirements.txt` and `requirements-dev.txt` all use exact `==` pins and must match (Dependabot bumps them together). Update all of them when adding or changing a dependency.
+- `requirements.txt` is runtime-only and is what Docker installs. Tests, coverage and lint tools (pytest*, black, isort, flake8) live in `requirements-dev.txt` (`-r requirements.txt` plus dev pins), which CI and `scripts/run-tests.sh` install.
+- Python 3.11 is the minimum (`requires-python`, black target py311); code uses `datetime.UTC`. CI runs the test job on 3.11 and 3.14. Dockerfile uses 3.14.
 
 ## Known gaps (don't assume these work)
 
 - `CategoryService.sync_categories_from_ynab` is a TODO: it fetches YNAB data but never writes `payee_category_mappings`. Nothing calls `update_payee_category_mapping`, so every transaction currently goes to YNAB uncategorised.
 - DB model timestamp defaults use `default=datetime.now(UTC)` (evaluated once at import), not a callable.
-- No Alembic migrations exist despite the dependency; schema is created via `Base.metadata.create_all` on startup.
+- No Alembic installed and no migrations; schema is created via `Base.metadata.create_all` on startup.
 - `/refresh` and `/webhook` have no auth; webhook signature (`X-Up-Authenticity-Signature`) is not verified.
