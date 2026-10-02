@@ -76,3 +76,6 @@ logs/
 
 # Development files
 .env.example
+
+# Local secrets
+keys.txt

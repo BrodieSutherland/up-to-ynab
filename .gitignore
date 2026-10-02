@@ -67,3 +67,5 @@ logs/
 errors.txt
 transaction_example.json
 Requirements.md
+# Local secrets
+keys.txt

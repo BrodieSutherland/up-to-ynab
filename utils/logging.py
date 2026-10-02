@@ -5,9 +5,22 @@ from typing import Any
 import structlog
 
 
+class HealthCheckFilter(logging.Filter):
+    """Drop uvicorn access log lines for the /health endpoint."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # uvicorn access args: (client_addr, method, path, http_version, status)
+        args = record.args
+        return not (isinstance(args, tuple) and len(args) >= 3 and args[2] == "/health")
+
+
 def setup_logging(debug: bool = False) -> None:
     """Configure structured logging for the application."""
     log_level = logging.DEBUG if debug else logging.INFO
+
+    # Docker healthchecks hit /health every 30s and drown out real events
+    if not debug:
+        logging.getLogger("uvicorn.access").addFilter(HealthCheckFilter())
 
     # Configure standard logging
     logging.basicConfig(
