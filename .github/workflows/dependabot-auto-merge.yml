@@ -2,37 +2,40 @@ name: Dependabot Auto Merge
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, reopened, synchronize]
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 jobs:
   auto-merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
-    if: ${{ github.actor == 'dependabot[bot]' }}
-
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      HAS_APP: ${{ secrets.AUTOMERGE_APP_ID != '' }}
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-
     - name: Get Dependabot metadata
       id: metadata
-      uses: dependabot/fetch-metadata@v1
+      uses: dependabot/fetch-metadata@v3
       with:
-        github-token: "${{ secrets.GITHUB_TOKEN }}"
+        github-token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Auto-merge for patch updates
-      if: ${{ steps.metadata.outputs.update-type == 'version-update:semver-patch' }}
+    - name: Create GitHub App token
+      id: app-token
+      if: env.HAS_APP == 'true' && steps.metadata.outputs.update-type == 'version-update:semver-patch'
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ secrets.AUTOMERGE_APP_ID }}
+        private-key: ${{ secrets.AUTOMERGE_APP_PRIVATE_KEY }}
+
+    - name: Enable auto-merge for patch updates
+      if: steps.metadata.outputs.update-type == 'version-update:semver-patch'
       run: gh pr merge --auto --merge "$PR_URL"
       env:
         PR_URL: ${{ github.event.pull_request.html_url }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    - name: Auto-approve for minor updates
-      if: ${{ steps.metadata.outputs.update-type == 'version-update:semver-minor' }}
-      run: gh pr review --approve "$PR_URL"
-      env:
-        PR_URL: ${{ github.event.pull_request.html_url }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # App token so the eventual merge triggers CI + publish on main;
+        # falls back to GITHUB_TOKEN (merges, but main workflows won't run).
+        GH_TOKEN: ${{ steps.app-token.outputs.token || secrets.GITHUB_TOKEN }}
