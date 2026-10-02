@@ -48,3 +48,6 @@ updates:
     commit-message:
       prefix: "ci"
       include: "scope"
+    groups:
+      actions:
+        patterns: ["*"]
