@@ -6,15 +6,16 @@ on:
   pull_request:
     branches: [ main ]
 
-env:
-  PYTHON_VERSION: 3.11
-
 permissions:
   contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [ "3.11", "3.14" ]
 
     steps:
     - name: Checkout code
@@ -23,22 +24,19 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
-        python-version: ${{ env.PYTHON_VERSION }}
+        python-version: ${{ matrix.python-version }}
         cache: 'pip'
+        cache-dependency-path: requirements*.txt
 
     - name: Install dependencies
       working-directory: .
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest-cov
+        pip install -r requirements-dev.txt
 
     - name: Run linting
       working-directory: .
       run: |
-        # Install linting tools
-        pip install black isort flake8
-
         # Check code formatting
         black --check --diff .
 
@@ -60,6 +58,7 @@ jobs:
         YNAB_ACCOUNT_ID: test_account
 
     - name: Upload coverage reports
+      if: matrix.python-version == '3.11'
       uses: codecov/codecov-action@v3
       with:
         file: ./coverage.xml
