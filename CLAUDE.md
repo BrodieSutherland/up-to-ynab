@@ -41,7 +41,7 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 
 - `app.py` — FastAPI app factory, lifespan (creates tables, pings/creates Up webhook, refreshes categories), routes `/health`, `/webhook`, `/refresh`.
 - `services/transaction_service.py` — orchestrator: webhook event → dedupe check → fetch from Up → filter → category lookup → create in YNAB → record result.
-- `services/up_service.py`, `services/ynab_service.py` — thin `httpx.AsyncClient` wrappers. Errors are logged and swallowed; methods return `None`/`[]`/`False` instead of raising.
+- `services/up_service.py`, `services/ynab_service.py` — thin `httpx2.AsyncClient` wrappers (imported as `httpx`). Errors are logged and swallowed; methods return `None`/`[]`/`False` instead of raising.
 - `services/category_service.py` — DB access for payee→category mappings and processed-transaction log.
 - `database/` — SQLAlchemy 2.0 async models + global `db_manager` singleton (created at import time).
 - `models/` — Pydantic v2 models for Up and YNAB API payloads.
@@ -61,7 +61,7 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 ## Testing
 
 - `tests/conftest.py` sets fake env tokens *before* importing app code, because `db_manager` and settings load at import time. Keep that ordering.
-- Mock HTTP with `patch("httpx.AsyncClient")`, DB with `patch("database.connection.db_manager.get_session")`, and settings by patching `get_settings` **in the module that imports it** (e.g. `services.up_service.get_settings`), since `lru_cache` otherwise returns real settings.
+- Mock HTTP with `patch("httpx2.AsyncClient")`, DB with `patch("database.connection.db_manager.get_session")`, and settings by patching `get_settings` **in the module that imports it** (e.g. `services.up_service.get_settings`), since `lru_cache` otherwise returns real settings.
 - `asyncio_mode = "auto"` — async tests need no decorator.
 
 ## Dependencies

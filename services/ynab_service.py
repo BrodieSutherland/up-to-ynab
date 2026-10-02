@@ -1,6 +1,6 @@
 from typing import Dict, List, Optional
 
-import httpx
+import httpx2 as httpx
 import structlog
 
 from models.up_models import UpTransaction

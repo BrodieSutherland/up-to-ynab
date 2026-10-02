@@ -1,6 +1,6 @@
 from unittest.mock import Mock, patch
 
-import httpx
+import httpx2 as httpx
 import pytest
 
 from models.up_models import UpTransaction
@@ -33,7 +33,7 @@ class TestYnabService:
         mock_response.json.return_value = sample_ynab_transaction_response
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("httpx2.AsyncClient") as mock_client:
             mock_post = mock_client.return_value.__aenter__.return_value.post
             mock_post.return_value = mock_response
 
@@ -59,7 +59,7 @@ class TestYnabService:
         mock_response.json.return_value = response_data
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("httpx2.AsyncClient") as mock_client:
             mock_post = mock_client.return_value.__aenter__.return_value.post
             mock_post.return_value = mock_response
 
@@ -82,7 +82,7 @@ class TestYnabService:
             "Bad Request", request=Mock(), response=mock_response
         )
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("httpx2.AsyncClient") as mock_client:
             mock_post = mock_client.return_value.__aenter__.return_value.post
             mock_post.return_value = mock_response
 
@@ -97,7 +97,7 @@ class TestYnabService:
         mock_response.json.return_value = sample_ynab_budget_data
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("httpx2.AsyncClient") as mock_client:
             mock_get = mock_client.return_value.__aenter__.return_value.get
             mock_get.return_value = mock_response
 
@@ -117,7 +117,7 @@ class TestYnabService:
             "Not Found", request=Mock(), response=mock_response
         )
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("httpx2.AsyncClient") as mock_client:
             mock_get = mock_client.return_value.__aenter__.return_value.get
             mock_get.return_value = mock_response
 
@@ -132,7 +132,7 @@ class TestYnabService:
         mock_response.json.return_value = sample_ynab_budget_data
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("httpx2.AsyncClient") as mock_client:
             mock_get = mock_client.return_value.__aenter__.return_value.get
             mock_get.return_value = mock_response
 
@@ -151,7 +151,7 @@ class TestYnabService:
             "Not Found", request=Mock(), response=mock_response
         )
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("httpx2.AsyncClient") as mock_client:
             mock_get = mock_client.return_value.__aenter__.return_value.get
             mock_get.return_value = mock_response
 
@@ -177,7 +177,7 @@ class TestYnabService:
         mock_response.json.return_value = budget_data
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("httpx2.AsyncClient") as mock_client:
             mock_get = mock_client.return_value.__aenter__.return_value.get
             mock_get.return_value = mock_response
 

@@ -15,7 +15,7 @@ dependencies = [
     "pydantic-settings==2.15.0",
     "sqlalchemy[asyncio]==2.1.1",
     "aiosqlite==0.22.1",
-    "httpx==0.28.1",
+    "httpx2==2.13.1",
     "python-dotenv==1.2.4",
     "structlog==26.1.0",
 ]
