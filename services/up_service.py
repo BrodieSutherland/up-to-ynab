@@ -29,8 +29,6 @@ class UpService:
             "Content-Type": "application/json",
         }
 
-        logger.info(self.headers)
-
     async def get_transaction(self, transaction_id: str) -> Optional[UpTransaction]:
         """Fetch a transaction from Up API."""
         url = f"{self.base_url}/transactions/{transaction_id}"
