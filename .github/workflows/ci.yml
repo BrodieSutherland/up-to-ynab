@@ -25,20 +25,17 @@ jobs:
       with:
         python-version: ${{ env.PYTHON_VERSION }}
         cache: 'pip'
+        cache-dependency-path: requirements*.txt
 
     - name: Install dependencies
       working-directory: .
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install pytest-cov
+        pip install -r requirements-dev.txt
 
     - name: Run linting
       working-directory: .
       run: |
-        # Install linting tools
-        pip install black isort flake8
-
         # Check code formatting
         black --check --diff .
 

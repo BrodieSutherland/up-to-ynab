@@ -130,6 +130,11 @@ pip install -r requirements.txt
 python -m uvicorn app:app --host 0.0.0.0 --port 5001
 ```
 
+For development (tests and linting), install `requirements-dev.txt` instead:
+```bash
+pip install -r requirements-dev.txt
+```
+
 ## Monitoring
 
 ### Health Checks

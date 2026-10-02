@@ -14,7 +14,7 @@ fi
 
 # Install dependencies
 echo "Installing dependencies..."
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 
 # Run tests with coverage
 echo "Running tests with coverage..."
