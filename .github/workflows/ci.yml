@@ -49,21 +49,13 @@ jobs:
     - name: Run tests
       working-directory: .
       run: |
-        pytest tests/ -v --cov=. --cov-report=xml --cov-report=term-missing
+        pytest tests/ -v --cov=. --cov-report=term-missing
       env:
         # Mock environment variables for tests
         UP_API_TOKEN: test_token
         YNAB_API_TOKEN: test_token
         YNAB_BUDGET_ID: test_budget
         YNAB_ACCOUNT_ID: test_account
-
-    - name: Upload coverage reports
-      if: matrix.python-version == '3.11'
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.xml
-        directory: .
-        fail_ci_if_error: false
 
   docker-build:
     runs-on: ubuntu-latest
@@ -110,7 +102,7 @@ jobs:
       uses: actions/checkout@v6
 
     - name: Run Trivy vulnerability scanner
-      uses: aquasecurity/trivy-action@master
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
       with:
         scan-type: 'fs'
         scan-ref: '.'
