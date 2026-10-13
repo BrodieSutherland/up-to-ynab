@@ -13,7 +13,7 @@ dependencies = [
     "uvicorn[standard]==0.54.0",
     "pydantic==2.13.5",
     "pydantic-settings==2.15.0",
-    "sqlalchemy[asyncio]==2.1.1",
+    "sqlalchemy[asyncio]==2.1.4",
     "aiosqlite==0.22.1",
     "httpx2==2.13.1",
     "python-dotenv==1.2.4",
