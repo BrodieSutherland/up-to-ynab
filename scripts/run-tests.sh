@@ -18,7 +18,7 @@ pip install -r requirements-dev.txt
 
 # Run tests with coverage
 echo "Running tests with coverage..."
-pytest tests/ -v --tb=short --cov=. --cov-report=term-missing --cov-report=html
+pytest tests/ -v --tb=short --cov --cov-report=term-missing --cov-report=html
 
 echo "✓ Tests completed successfully!"
 echo "Coverage report generated in htmlcov/index.html"

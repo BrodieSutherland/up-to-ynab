@@ -1,0 +1,69 @@
+{
+  "data": {
+    "type": "transactions",
+    "id": "transactions-1298",
+    "attributes": {
+      "status": "SETTLED",
+      "rawText": null,
+      "description": "Transfer from Other party 1",
+      "message": "",
+      "isCategorizable": false,
+      "holdInfo": null,
+      "roundUp": null,
+      "cashback": null,
+      "amount": {
+        "currencyCode": "AUD",
+        "value": "449.50",
+        "valueInBaseUnits": 44950
+      },
+      "foreignAmount": null,
+      "cardPurchaseMethod": null,
+      "settledAt": "2025-08-08T06:05:33+10:00",
+      "createdAt": "2025-08-08T06:05:33+10:00",
+      "transactionType": "Transfer",
+      "note": null,
+      "performingCustomer": {
+        "displayName": "Customer 1"
+      },
+      "deepLinkURL": "up://transaction/VHJhbnNhY3Rpb24tMjEwNjAxNTQyNw=="
+    },
+    "relationships": {
+      "account": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-1"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-1"
+        }
+      },
+      "transferAccount": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-4"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-4"
+        }
+      },
+      "category": {
+        "data": null
+      },
+      "parentCategory": {
+        "data": null
+      },
+      "tags": {
+        "data": [],
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-1298/relationships/tags"
+        }
+      },
+      "attachment": {
+        "data": null
+      }
+    },
+    "links": {
+      "self": "https://api.up.com.au/api/v1/transactions/transactions-1298"
+    }
+  }
+}

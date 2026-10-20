@@ -17,11 +17,12 @@ source .venv/bin/activate          # local venv (there is also a stale venv/)
 pip install -r requirements-dev.txt   # runtime + test + lint tools
 pytest -q                          # full suite, ~1s, no network needed
 pytest tests/test_transaction_service.py -v
+pytest -q --cov --cov-branch   # coverage gate
 black . && isort . && flake8 --extend-ignore=E203,W503 .   # must pass: CI runs --check
 python -m uvicorn app:app --port 5001 --reload             # needs .env (see .env.example)
 ```
 
-CI (`.github/workflows/ci.yml`) runs tests (Python 3.11 and 3.14) and black/isort/flake8 checks, a Docker build + `/health` smoke test, and Trivy. CodeQL runs from `.github/workflows/codeql.yml` (advanced setup, so it also covers Dependabot PRs; repo-level "default setup" must stay disabled or the uploads conflict). The multi-arch image (`docker-publish.yml`, a reusable workflow called as the `image` job) is built on PRs without pushing, and is published to Docker Hub only from `main` / `v*` tags after all checks pass. `CI OK` is the single required status check. Dependabot patch PRs auto-merge via a GitHub App token (secrets `AUTOMERGE_APP_ID`, `AUTOMERGE_APP_PRIVATE_KEY`) once `CI OK` passes.
+CI (`.github/workflows/ci.yml`) runs on pushes to `main`/`develop`, `v*` tags, and PRs into `main` and `develop`. It runs tests (Python 3.11 and 3.14) with an app-only branch coverage gate (`[tool.coverage]` in `pyproject.toml`; `fail_under` is currently 83, ratcheting to 90; new top-level packages must be added to coverage `source`) and black/isort/flake8 checks, a Docker build + `/health` smoke test, and Trivy. CodeQL runs from `.github/workflows/codeql.yml` (advanced setup, so it also covers Dependabot PRs; repo-level "default setup" must stay disabled or the uploads conflict). The multi-arch image (`docker-publish.yml`, a reusable workflow called as the `image` job) is built on PRs without pushing, and is published to Docker Hub only from `main` / `v*` tags after all checks pass. The metadata step uses `flavor: latest=false`, so only `main` moves `latest`. `CI OK` is the single required status check. Dependabot patch PRs auto-merge via a GitHub App token (secrets `AUTOMERGE_APP_ID`, `AUTOMERGE_APP_PRIVATE_KEY`) once `CI OK` passes.
 
 ## Code navigation & editing (Serena MCP)
 
@@ -60,6 +61,7 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 
 ## Testing
 
+- Redacted real Up payloads live in `tests/fixtures/up/`.
 - `tests/conftest.py` sets fake env tokens *before* importing app code, because `db_manager` and settings load at import time. Keep that ordering.
 - Mock HTTP with `patch("httpx2.AsyncClient")`, DB with `patch("database.connection.db_manager.get_session")`, and settings by patching `get_settings` **in the module that imports it** (e.g. `services.up_service.get_settings`), since `lru_cache` otherwise returns real settings.
 - `asyncio_mode = "auto"` — async tests need no decorator.

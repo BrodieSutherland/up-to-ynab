@@ -1,0 +1,94 @@
+{
+  "data": {
+    "type": "transactions",
+    "id": "transactions-143",
+    "attributes": {
+      "status": "SETTLED",
+      "rawText": "Raw text 8",
+      "description": "Payee 10",
+      "message": null,
+      "isCategorizable": true,
+      "holdInfo": {
+        "amount": {
+          "currencyCode": "AUD",
+          "value": "-150.45",
+          "valueInBaseUnits": -15045
+        },
+        "foreignAmount": {
+          "currencyCode": "USD",
+          "value": "-82.55",
+          "valueInBaseUnits": -8255
+        }
+      },
+      "roundUp": null,
+      "cashback": null,
+      "amount": {
+        "currencyCode": "AUD",
+        "value": "-150.45",
+        "valueInBaseUnits": -15045
+      },
+      "foreignAmount": {
+        "currencyCode": "USD",
+        "value": "-82.55",
+        "valueInBaseUnits": -8255
+      },
+      "cardPurchaseMethod": {
+        "method": "CARD_ON_FILE",
+        "cardNumberSuffix": "0000"
+      },
+      "settledAt": "2026-08-07T03:48:54+10:00",
+      "createdAt": "2026-08-05T23:17:23+10:00",
+      "transactionType": "International Purchase",
+      "note": null,
+      "performingCustomer": {
+        "displayName": "Customer 1"
+      },
+      "deepLinkURL": "up://transaction/VHJhbnNhY3Rpb24tMjgxNTgwODE2OQ=="
+    },
+    "relationships": {
+      "account": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-1"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-1"
+        }
+      },
+      "transferAccount": {
+        "data": null
+      },
+      "category": {
+        "data": {
+          "type": "categories",
+          "id": "games-and-software"
+        },
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-143/relationships/category",
+          "related": "https://api.up.com.au/api/v1/categories/games-and-software"
+        }
+      },
+      "parentCategory": {
+        "data": {
+          "type": "categories",
+          "id": "good-life"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/categories/good-life"
+        }
+      },
+      "tags": {
+        "data": [],
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-143/relationships/tags"
+        }
+      },
+      "attachment": {
+        "data": null
+      }
+    },
+    "links": {
+      "self": "https://api.up.com.au/api/v1/transactions/transactions-143"
+    }
+  }
+}

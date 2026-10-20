@@ -57,6 +57,8 @@ jobs:
       uses: docker/metadata-action@v6
       with:
         images: ${{ env.IMAGE }}
+        flavor: |
+          latest=false
         tags: |
           type=ref,event=branch
           type=ref,event=pr

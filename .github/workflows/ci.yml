@@ -5,7 +5,7 @@ on:
     branches: [ main, develop ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 permissions:
   contents: read
@@ -54,7 +54,7 @@ jobs:
     - name: Run tests
       working-directory: .
       run: |
-        pytest tests/ -v --cov=. --cov-report=term-missing
+        pytest tests/ -v --cov --cov-report=term-missing
       env:
         # Mock environment variables for tests
         UP_API_TOKEN: test_token

@@ -1,0 +1,93 @@
+{
+  "data": {
+    "type": "transactions",
+    "id": "transactions-5",
+    "attributes": {
+      "status": "HELD",
+      "rawText": "Raw text 3",
+      "description": "Payee 3",
+      "message": null,
+      "isCategorizable": true,
+      "holdInfo": {
+        "amount": {
+          "currencyCode": "AUD",
+          "value": "-318.47",
+          "valueInBaseUnits": -31847
+        },
+        "foreignAmount": null
+      },
+      "roundUp": {
+        "amount": {
+          "currencyCode": "AUD",
+          "value": "-452.07",
+          "valueInBaseUnits": -45207
+        },
+        "boostPortion": null
+      },
+      "cashback": null,
+      "amount": {
+        "currencyCode": "AUD",
+        "value": "-318.47",
+        "valueInBaseUnits": -31847
+      },
+      "foreignAmount": null,
+      "cardPurchaseMethod": {
+        "method": "CONTACTLESS",
+        "cardNumberSuffix": "0000"
+      },
+      "settledAt": null,
+      "createdAt": "2026-10-17T11:15:30+11:00",
+      "transactionType": null,
+      "note": null,
+      "performingCustomer": {
+        "displayName": "Customer 1"
+      },
+      "deepLinkURL": "up://transaction/VHJhbnNhY3Rpb24tMjk2NjM0NDk4OQ=="
+    },
+    "relationships": {
+      "account": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-1"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-1"
+        }
+      },
+      "transferAccount": {
+        "data": null
+      },
+      "category": {
+        "data": {
+          "type": "categories",
+          "id": "takeaway"
+        },
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-5/relationships/category",
+          "related": "https://api.up.com.au/api/v1/categories/takeaway"
+        }
+      },
+      "parentCategory": {
+        "data": {
+          "type": "categories",
+          "id": "good-life"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/categories/good-life"
+        }
+      },
+      "tags": {
+        "data": [],
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-5/relationships/tags"
+        }
+      },
+      "attachment": {
+        "data": null
+      }
+    },
+    "links": {
+      "self": "https://api.up.com.au/api/v1/transactions/transactions-5"
+    }
+  }
+}

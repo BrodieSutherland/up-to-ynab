@@ -1,0 +1,104 @@
+{
+  "data": [
+    {
+      "type": "accounts",
+      "id": "accounts-1",
+      "attributes": {
+        "displayName": "Spending",
+        "accountType": "TRANSACTIONAL",
+        "ownershipType": "INDIVIDUAL",
+        "balance": {
+          "currencyCode": "AUD",
+          "value": "157.40",
+          "valueInBaseUnits": 15740
+        },
+        "createdAt": "2020-02-12T17:04:57+11:00"
+      },
+      "relationships": {
+        "transactions": {
+          "links": {
+            "related": "https://api.up.com.au/api/v1/accounts/accounts-1/transactions"
+          }
+        }
+      },
+      "links": {
+        "self": "https://api.up.com.au/api/v1/accounts/accounts-1"
+      }
+    },
+    {
+      "type": "accounts",
+      "id": "accounts-2",
+      "attributes": {
+        "displayName": "🙂 Saver 1",
+        "accountType": "SAVER",
+        "ownershipType": "INDIVIDUAL",
+        "balance": {
+          "currencyCode": "AUD",
+          "value": "0.00",
+          "valueInBaseUnits": 0
+        },
+        "createdAt": "2020-02-12T17:10:37+11:00"
+      },
+      "relationships": {
+        "transactions": {
+          "links": {
+            "related": "https://api.up.com.au/api/v1/accounts/accounts-2/transactions"
+          }
+        }
+      },
+      "links": {
+        "self": "https://api.up.com.au/api/v1/accounts/accounts-2"
+      }
+    },
+    {
+      "type": "accounts",
+      "id": "accounts-3",
+      "attributes": {
+        "displayName": "🙂 Saver 2",
+        "accountType": "SAVER",
+        "ownershipType": "INDIVIDUAL",
+        "balance": {
+          "currencyCode": "AUD",
+          "value": "0.00",
+          "valueInBaseUnits": 0
+        },
+        "createdAt": "2020-02-12T17:17:57+11:00"
+      },
+      "relationships": {
+        "transactions": {
+          "links": {
+            "related": "https://api.up.com.au/api/v1/accounts/accounts-3/transactions"
+          }
+        }
+      },
+      "links": {
+        "self": "https://api.up.com.au/api/v1/accounts/accounts-3"
+      }
+    },
+    {
+      "type": "accounts",
+      "id": "accounts-4",
+      "attributes": {
+        "displayName": "🙂 Saver 3",
+        "accountType": "SAVER",
+        "ownershipType": "INDIVIDUAL",
+        "balance": {
+          "currencyCode": "AUD",
+          "value": "386.06",
+          "valueInBaseUnits": 38606
+        },
+        "createdAt": "2020-02-12T17:18:27+11:00"
+      },
+      "relationships": {
+        "transactions": {
+          "links": {
+            "related": "https://api.up.com.au/api/v1/accounts/accounts-4/transactions"
+          }
+        }
+      },
+      "links": {
+        "self": "https://api.up.com.au/api/v1/accounts/accounts-4"
+      }
+    }
+  ]
+}

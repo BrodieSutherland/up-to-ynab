@@ -79,3 +79,7 @@ logs/
 
 # Local secrets
 keys.txt
+
+# Tests and local scratch (keep committed fixtures out of the image)
+tests/
+.scratch/

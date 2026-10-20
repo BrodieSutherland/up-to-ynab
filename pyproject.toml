@@ -43,3 +43,11 @@ target-version = ['py311']
 [tool.isort]
 profile = "black"
 line_length = 88
+[tool.coverage.run]
+branch = true
+source = ["app", "database", "models", "services", "utils"]
+omit = ["tests/*", ".scratch/*", ".venv/*", "venv/*"]
+
+[tool.coverage.report]
+fail_under = 83
+show_missing = true

@@ -1,0 +1,83 @@
+{
+  "data": {
+    "type": "transactions",
+    "id": "transactions-3",
+    "attributes": {
+      "status": "SETTLED",
+      "rawText": "Raw text 2",
+      "description": "Payee 2",
+      "message": null,
+      "isCategorizable": true,
+      "holdInfo": {
+        "amount": {
+          "currencyCode": "AUD",
+          "value": "-497.85",
+          "valueInBaseUnits": -49785
+        },
+        "foreignAmount": null
+      },
+      "roundUp": {
+        "amount": {
+          "currencyCode": "AUD",
+          "value": "-67.78",
+          "valueInBaseUnits": -6778
+        },
+        "boostPortion": null
+      },
+      "cashback": null,
+      "amount": {
+        "currencyCode": "AUD",
+        "value": "-497.85",
+        "valueInBaseUnits": -49785
+      },
+      "foreignAmount": null,
+      "cardPurchaseMethod": {
+        "method": "CARD_ON_FILE",
+        "cardNumberSuffix": "0000"
+      },
+      "settledAt": "2026-10-20T07:52:26+11:00",
+      "createdAt": "2026-10-17T14:31:35+11:00",
+      "transactionType": "Purchase",
+      "note": null,
+      "performingCustomer": {
+        "displayName": "Customer 1"
+      },
+      "deepLinkURL": "up://transaction/VHJhbnNhY3Rpb24tMjk2NjgxNTkwMQ=="
+    },
+    "relationships": {
+      "account": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-1"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-1"
+        }
+      },
+      "transferAccount": {
+        "data": null
+      },
+      "category": {
+        "data": null,
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-3/relationships/category"
+        }
+      },
+      "parentCategory": {
+        "data": null
+      },
+      "tags": {
+        "data": [],
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-3/relationships/tags"
+        }
+      },
+      "attachment": {
+        "data": null
+      }
+    },
+    "links": {
+      "self": "https://api.up.com.au/api/v1/transactions/transactions-3"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "deliveryStatus": "BAD_RESPONSE_CODE",
+  "createdAt": "2026-10-20T14:57:44+11:00",
+  "responseStatusCode": 404,
+  "event": {
+    "data": {
+      "type": "webhook-events",
+      "id": "webhook-events-1",
+      "attributes": {
+        "eventType": "TRANSACTION_CREATED",
+        "createdAt": "2026-10-20T14:57:40+11:00"
+      },
+      "relationships": {
+        "webhook": {
+          "data": {
+            "type": "webhooks",
+            "id": "webhooks-1"
+          },
+          "links": {
+            "related": "https://api.up.com.au/api/v1/webhooks/webhooks-1"
+          }
+        },
+        "transaction": {
+          "data": {
+            "type": "transactions",
+            "id": "transactions-1"
+          },
+          "links": {
+            "related": "https://api.up.com.au/api/v1/transactions/transactions-1"
+          }
+        }
+      }
+    }
+  }
+}

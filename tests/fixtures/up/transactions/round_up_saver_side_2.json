@@ -1,0 +1,67 @@
+{
+  "data": {
+    "type": "transactions",
+    "id": "transactions-4",
+    "attributes": {
+      "status": "SETTLED",
+      "rawText": null,
+      "description": "Round Up",
+      "message": null,
+      "isCategorizable": false,
+      "holdInfo": null,
+      "roundUp": null,
+      "cashback": null,
+      "amount": {
+        "currencyCode": "AUD",
+        "value": "452.07",
+        "valueInBaseUnits": 45207
+      },
+      "foreignAmount": null,
+      "cardPurchaseMethod": null,
+      "settledAt": "2026-10-17T11:15:31+11:00",
+      "createdAt": "2026-10-17T11:15:31+11:00",
+      "transactionType": "Round Up",
+      "note": null,
+      "performingCustomer": null,
+      "deepLinkURL": "up://transaction/VHJhbnNhY3Rpb24tMjk2NjM0NTA0NA=="
+    },
+    "relationships": {
+      "account": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-4"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-4"
+        }
+      },
+      "transferAccount": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-1"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-1"
+        }
+      },
+      "category": {
+        "data": null
+      },
+      "parentCategory": {
+        "data": null
+      },
+      "tags": {
+        "data": [],
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-4/relationships/tags"
+        }
+      },
+      "attachment": {
+        "data": null
+      }
+    },
+    "links": {
+      "self": "https://api.up.com.au/api/v1/transactions/transactions-4"
+    }
+  }
+}
