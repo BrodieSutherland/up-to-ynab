@@ -15,7 +15,7 @@ fi
 
 # Validate required environment variables
 source .env
-required_vars=("UP_API_TOKEN" "YNAB_API_TOKEN" "YNAB_BUDGET_ID" "YNAB_ACCOUNT_ID" "WEBHOOK_URL")
+required_vars=("UP_API_TOKEN" "YNAB_API_TOKEN" "YNAB_BUDGET_ID" "WEBHOOK_URL")
 
 for var in "${required_vars[@]}"; do
     if [ -z "${!var}" ]; then

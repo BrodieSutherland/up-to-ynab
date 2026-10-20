@@ -2,6 +2,29 @@ from clients.ynab import AlreadyImported, Created
 from models.ynab_models import YnabAccount, YnabTransaction, YnabTransactionDetail
 
 
+def ynab_account(
+    id: str,
+    name: str,
+    closed: bool = False,
+    deleted: bool = False,
+    transfer_payee_id: str | None = None,
+) -> YnabAccount:
+    return YnabAccount(
+        id=id,
+        name=name,
+        type="checking",
+        on_budget=True,
+        closed=closed,
+        balance=0,
+        cleared_balance=0,
+        uncleared_balance=0,
+        transfer_payee_id=transfer_payee_id or f"tp-{id}",
+        direct_import_linked=False,
+        direct_import_in_error=False,
+        deleted=deleted,
+    )
+
+
 class FakeYnabClient:
     """In-memory YnabClient. `errors[method_name]` is raised when that method runs."""
 
@@ -18,6 +41,7 @@ class FakeYnabClient:
         self.already_imported = already_imported
         self.created: list[YnabTransactionDetail] = []
         self.since_dates: list[str] = []
+        self.list_accounts_calls = 0
 
     def _maybe_raise(self, method: str) -> None:
         if method in self.errors:
@@ -33,6 +57,7 @@ class FakeYnabClient:
         return Created(f"ynab-{len(self.created)}")
 
     async def list_accounts(self) -> list[YnabAccount]:
+        self.list_accounts_calls += 1
         self._maybe_raise("list_accounts")
         return list(self.accounts)
 

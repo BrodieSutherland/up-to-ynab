@@ -1,20 +1,21 @@
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from structlog.testing import capture_logs
 
-from app import Services, create_app, open_services
+from app import Services, build_services, create_app, open_services
 from clients.errors import UpstreamError
 from clients.up import HttpUpClient
-from forwarding.budget_index import LegacyIndex
+from forwarding.budget_index import BudgetIndex, YnabAccountRef
 from forwarding.forwarder import Forwarder
 from models.up_models import UpTransaction, UpWebhook
 from tests.fakes.budget_index import FakeIndexHolder
 from tests.fakes.ledger import InMemoryLedger
 from tests.fakes.up import FakeUpClient
 from tests.fakes.ynab import FakeYnabClient
-from utils.filters import TransactionFilter
+from utils.config import Settings
 
-INDEX = LegacyIndex("acct-1", {}, TransactionFilter(["Transfer to "]))
+INDEX = BudgetIndex({"test-account-id": YnabAccountRef("acct-1", "tp-1")}, {})
 
 
 def make_services(up, ynab=None, holder=None, ledger=None) -> Services:
@@ -224,7 +225,6 @@ class TestAPIStartupShutdown:
             assert isinstance(built.up, HttpUpClient)
             http = built.up._http
             assert http.is_closed is False
-            await built.budget_index.rebuild()
 
         assert http.is_closed is True
 
@@ -251,12 +251,10 @@ class TestAPIStartupShutdown:
             "UP_API_TOKEN",
             "YNAB_API_TOKEN",
             "YNAB_BUDGET_ID",
-            "YNAB_ACCOUNT_ID",
         ):
             monkeypatch.delenv(name, raising=False)
         monkeypatch.setenv("YNAB_API_TOKEN", "secret-ynab-token")
         monkeypatch.setenv("YNAB_BUDGET_ID", "budget")
-        monkeypatch.setenv("YNAB_ACCOUNT_ID", "account")
 
         with pytest.raises(ValidationError) as exc_info:
             create_app()
@@ -264,3 +262,86 @@ class TestAPIStartupShutdown:
         message = str(exc_info.value)
         assert "up_api_token" in message
         assert "secret-ynab-token" not in message
+
+
+class TestBudgetIndexThroughApp:
+    """Real BudgetIndexHolder (via build_services) over fakes."""
+
+    def test_refresh_rebuilds_the_index(
+        self, test_settings, services, fake_up, fake_ynab
+    ):
+        with TestClient(create_app(test_settings, services)) as c:
+            assert fake_up.list_accounts_calls == 1
+            assert c.get("/refresh").status_code == 200
+
+        assert fake_up.list_accounts_calls == 2
+        assert fake_ynab.list_accounts_calls == 2
+
+    def test_startup_without_index_boots_and_webhook_is_503(
+        self, test_settings, services, fake_ynab, sample_up_webhook_event_data
+    ):
+        fake_ynab.errors["list_accounts"] = UpstreamError("down", 503)
+        with TestClient(create_app(test_settings, services)) as c:
+            assert c.get("/health").status_code == 200
+            response = c.post("/webhook", json=sample_up_webhook_event_data)
+
+        assert response.status_code == 503
+        assert response.json() == {
+            "status": "failed",
+            "result": "Budget Index unavailable",
+        }
+
+    def test_account_not_in_ynab_is_skipped(
+        self, test_settings, database, fake_up, sample_up_webhook_event_data
+    ):
+        ynab = FakeYnabClient()
+        services = build_services(test_settings, database, fake_up, ynab)
+        with TestClient(create_app(test_settings, services)) as c:
+            response = c.post("/webhook", json=sample_up_webhook_event_data)
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "status": "skipped",
+            "result": "Up account not in YNAB",
+        }
+        assert ynab.created == []
+
+    def test_webhook_goes_to_matching_ynab_account(
+        self, test_settings, services, fake_ynab, sample_up_webhook_event_data
+    ):
+        with TestClient(create_app(test_settings, services)) as c:
+            c.post("/webhook", json=sample_up_webhook_event_data)
+
+        assert fake_ynab.created[0].account_id == "ynab-acct-1"
+
+    def test_leftover_settings_warn_at_startup(
+        self, monkeypatch, services, test_settings
+    ):
+        monkeypatch.setenv("INTERNAL_TRANSFER_STRINGS", "[]")
+        settings = Settings(
+            _env_file=None,
+            up_api_token="a",
+            ynab_api_token="b",
+            ynab_budget_id="c",
+            ynab_account_id="old",
+            database_url=test_settings.database_url,
+        )
+        app = create_app(settings, services)
+        with capture_logs() as logs:
+            with TestClient(app):
+                pass
+
+        ignored = [e["name"] for e in logs if e["event"] == "Setting ignored"]
+        assert ignored == ["YNAB_ACCOUNT_ID", "INTERNAL_TRANSFER_STRINGS"]
+
+    def test_no_warning_without_leftover_settings(
+        self, monkeypatch, services, test_settings
+    ):
+        monkeypatch.delenv("YNAB_ACCOUNT_ID", raising=False)
+        monkeypatch.delenv("INTERNAL_TRANSFER_STRINGS", raising=False)
+        app = create_app(test_settings, services)
+        with capture_logs() as logs:
+            with TestClient(app):
+                pass
+
+        assert not [e for e in logs if e["event"] == "Setting ignored"]

@@ -1,16 +1,16 @@
 import pytest
 
 from models.up_models import UpTransaction
-from utils.filters import TransactionFilter
+from utils.filters import INTERNAL_TRANSFER_STRINGS, TransactionFilter
 
 
 class TestTransactionFilter:
     """Test cases for transaction filtering."""
 
     @pytest.fixture
-    def transaction_filter(self, test_settings):
-        """Create TransactionFilter instance with test settings."""
-        return TransactionFilter(test_settings.internal_transfer_strings)
+    def transaction_filter(self):
+        """Create TransactionFilter with the default strings."""
+        return TransactionFilter(INTERNAL_TRANSFER_STRINGS)
 
     @pytest.fixture
     def sample_up_transaction(self, sample_up_transaction_data):

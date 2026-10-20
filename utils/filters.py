@@ -1,10 +1,17 @@
 from models.up_models import UpTransaction
 
+INTERNAL_TRANSFER_STRINGS = (
+    "Transfer to ",
+    "Cover to ",
+    "Quick save transfer to ",
+    "Forward to ",
+)
+
 
 class TransactionFilter:
     """Filter transactions based on various criteria."""
 
-    def __init__(self, internal_transfer_strings: list[str]):
+    def __init__(self, internal_transfer_strings=INTERNAL_TRANSFER_STRINGS):
         self.internal_transfer_strings = internal_transfer_strings
 
     def is_internal_transfer(self, transaction: UpTransaction) -> bool:

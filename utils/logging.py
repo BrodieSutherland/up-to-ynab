@@ -46,7 +46,8 @@ def setup_logging(debug: bool = False) -> None:
         wrapper_class=structlog.make_filtering_bound_logger(log_level),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),
-        cache_logger_on_first_use=True,
+        # Uncached so tests can capture logs after the app configured logging.
+        cache_logger_on_first_use=False,
     )
 
 

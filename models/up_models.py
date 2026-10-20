@@ -160,6 +160,11 @@ class UpTransaction(BaseModel):
         return self.attributes.description
 
     @property
+    def account_id(self) -> str:
+        """Get the id of the Up account this transaction belongs to."""
+        return self.relationships.account["data"]["id"]
+
+    @property
     def amount_milliunits(self) -> int:
         """Get amount in milliunits for YNAB (multiply by 10)."""
         return self.attributes.amount.value_in_base_units * 10

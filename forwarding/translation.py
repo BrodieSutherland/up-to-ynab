@@ -1,9 +1,12 @@
 import hashlib
 from dataclasses import dataclass
 
-from forwarding.budget_index import LegacyIndex
+from forwarding.budget_index import BudgetIndex, YnabAccountRef
 from models.up_models import UpTransaction
 from models.ynab_models import YnabTransactionDetail
+from utils.filters import TransactionFilter
+
+_TRANSFER_FILTER = TransactionFilter()  # ticket 10 deletes
 
 
 @dataclass(frozen=True)
@@ -31,14 +34,17 @@ def create_import_id(up_transaction_id: str) -> str:
     return hash_hex[:36]  # Use first 36 characters of hash
 
 
-def translate(tx: UpTransaction, index: LegacyIndex) -> YnabTransactionDetail | Skip:
+def translate(tx: UpTransaction, index: BudgetIndex) -> YnabTransactionDetail | Skip:
     """Turn an Up transaction into a YNAB transaction, or say to skip it."""
-    if not index.transfer_filter.should_process_transaction(tx):
-        return Skip(index.transfer_filter.get_filtered_reason(tx))
+    target = index.account(tx.account_id)
+    if not isinstance(target, YnabAccountRef):
+        return Skip("Up account not in YNAB")
+    if not _TRANSFER_FILTER.should_process_transaction(tx):
+        return Skip(_TRANSFER_FILTER.get_filtered_reason(tx))
     return YnabTransactionDetail(
-        account_id=index.account_id,
+        account_id=target.id,
         payee_name=tx.payee,
-        category_id=index.category_by_payee.get(tx.payee),
+        category_id=index.category_match(tx.payee),
         memo=tx.attributes.raw_text or tx.payee,
         amount=tx.amount_milliunits,
         date=tx.date,

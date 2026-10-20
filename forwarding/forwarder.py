@@ -6,7 +6,7 @@ import structlog
 from clients.errors import UpstreamError
 from clients.up import UpClient
 from clients.ynab import Created, YnabClient
-from forwarding.budget_index import LegacyIndex
+from forwarding.budget_index import BudgetIndex, IndexUnavailable
 from forwarding.ledger import Failed, Forwarded, Ledger, Outcome, Skipped
 from forwarding.translation import Skip, translate
 from models.up_models import UpWebhookEvent
@@ -23,7 +23,7 @@ class Ignored:
 
 
 class IndexHolder(Protocol):
-    async def current_for(self, up_account_id: str) -> LegacyIndex: ...
+    async def current_for(self, up_account_id: str) -> BudgetIndex: ...
 
 
 class Forwarder:
@@ -58,6 +58,9 @@ class Forwarder:
                 logger.info("Ignoring handled transaction", up_transaction_id=up_id)
                 return Ignored(up_id, "already handled")
             outcome = await self._forward(up_id)
+        except IndexUnavailable:
+            logger.warning("Budget Index unavailable", up_transaction_id=up_id)
+            outcome = Failed(up_id, "Budget Index unavailable")
         except UpstreamError as e:
             logger.error(
                 "Upstream call failed",
@@ -87,7 +90,7 @@ class Forwarder:
 
     async def _forward(self, up_id: str) -> Forwarded | Skipped:
         tx = await self._up.get_transaction(up_id)
-        index = await self._holder.current_for(tx.relationships.account["data"]["id"])
+        index = await self._holder.current_for(tx.account_id)
         translated = translate(tx, index)
         if isinstance(translated, Skip):
             logger.info(

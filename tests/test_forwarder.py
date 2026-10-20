@@ -1,16 +1,19 @@
 import pytest
 
 from clients.errors import UpstreamError
-from forwarding.budget_index import LegacyIndex
+from forwarding.budget_index import (
+    BudgetIndex,
+    NotInYnab,
+    YnabAccountRef,
+)
 from forwarding.forwarder import Forwarder, Ignored
 from forwarding.ledger import Failed, Forwarded, Skipped
 from models.up_models import UpTransaction, UpWebhookEvent
 from tests.fakes.budget_index import FakeIndexHolder
 from tests.fakes.ledger import InMemoryLedger
 from tests.fakes.up import FakeUpClient
-from utils.filters import TransactionFilter
 
-INDEX = LegacyIndex("acct-1", {}, TransactionFilter(["Transfer to "]))
+INDEX = BudgetIndex({"test-account-id": YnabAccountRef("acct-1", "tp-1")}, {})
 
 
 @pytest.fixture
@@ -149,3 +152,24 @@ async def test_failed_transaction_is_retried(forwarder, event, fake_ynab, ledger
 
     assert result == Forwarded("test-transaction-id", "ynab-1")
     assert await ledger.attempts("test-transaction-id") == 2
+
+
+async def test_budget_index_unavailable_is_failed(fake_up, fake_ynab, event, ledger):
+    forwarder = Forwarder(fake_up, fake_ynab, FakeIndexHolder(None), ledger)
+
+    result = await forwarder.handle(event)
+
+    assert result == Failed("test-transaction-id", "Budget Index unavailable")
+    assert ledger.entries["test-transaction-id"].status == "failed"
+    assert fake_ynab.created == []
+
+
+async def test_account_not_in_ynab_is_skipped(fake_up, fake_ynab, event, ledger):
+    holder = FakeIndexHolder(BudgetIndex({"test-account-id": NotInYnab()}))
+    forwarder = Forwarder(fake_up, fake_ynab, holder, ledger)
+
+    result = await forwarder.handle(event)
+
+    assert result == Skipped("test-transaction-id", "Up account not in YNAB")
+    assert fake_ynab.created == []
+    assert ledger.entries["test-transaction-id"].status == "skipped"

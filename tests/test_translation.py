@@ -1,9 +1,12 @@
 import pytest
 
-from forwarding.budget_index import LegacyIndex
+from forwarding.budget_index import (
+    BudgetIndex,
+    NotInYnab,
+    YnabAccountRef,
+)
 from forwarding.translation import Skip, create_import_id, translate
 from models.up_models import UpTransaction
-from utils.filters import TransactionFilter
 
 
 @pytest.fixture
@@ -12,7 +15,8 @@ def up_transaction(sample_up_transaction_data):
 
 
 def index(mappings=None):
-    return LegacyIndex("acct-1", mappings or {}, TransactionFilter(["Transfer to "]))
+    ref = YnabAccountRef("acct-1", "tp-1")
+    return BudgetIndex({"test-account-id": ref}, mappings or {})
 
 
 def test_translates_all_fields(up_transaction):
@@ -40,6 +44,24 @@ def test_internal_transfer_is_skipped(sample_up_transaction_data):
     result = translate(UpTransaction(**data), index())
 
     assert result == Skip("Internal transfer detected")
+
+
+def test_account_not_in_ynab_is_skipped(up_transaction):
+    result = translate(up_transaction, BudgetIndex({"test-account-id": NotInYnab()}))
+
+    assert result == Skip("Up account not in YNAB")
+
+
+def test_unknown_account_is_skipped(up_transaction):
+    result = translate(up_transaction, BudgetIndex({}))
+
+    assert result == Skip("Up account not in YNAB")
+
+
+def test_uses_matched_ynab_account_id(up_transaction):
+    index = BudgetIndex({"test-account-id": YnabAccountRef("other-acct", "tp-9")})
+
+    assert translate(up_transaction, index).account_id == "other-acct"
 
 
 def test_uuid_is_used_unchanged():

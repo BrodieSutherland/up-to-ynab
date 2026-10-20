@@ -13,13 +13,12 @@ from clients.errors import UpstreamError
 from clients.up import HttpUpClient, UpClient
 from clients.ynab import HttpYnabClient, YnabClient
 from database.connection import DatabaseManager
-from forwarding.budget_index import LegacyIndexHolder
+from forwarding.budget_index import BudgetIndexHolder
 from forwarding.forwarder import Forwarder
 from forwarding.ledger import Failed, Forwarded, Skipped, SqlLedger
 from models.up_models import UpWebhookEvent
 from services.category_service import CategoryService
 from utils.config import Settings
-from utils.filters import TransactionFilter
 from utils.logging import setup_logging
 
 logger = structlog.get_logger()
@@ -44,7 +43,7 @@ class WebhookResponse(BaseModel):
     }
 
 
-class BudgetIndex(Protocol):
+class IndexRebuilder(Protocol):
     async def rebuild(self) -> None: ...
 
 
@@ -54,17 +53,19 @@ class Services:
 
     up: UpClient
     forwarder: Forwarder
-    budget_index: BudgetIndex
+    budget_index: IndexRebuilder
 
 
 def build_services(
     settings: Settings, database: DatabaseManager, up: UpClient, ynab: YnabClient
 ) -> Services:
     """Wire services from settings and clients; the only place they are built."""
-    index = LegacyIndexHolder(
-        CategoryService(database.get_session),
-        TransactionFilter(settings.internal_transfer_strings),
-        settings.ynab_account_id,
+    index = BudgetIndexHolder(
+        up,
+        ynab,
+        load_categories=CategoryService(  # ticket 07 replaces load_categories
+            database.get_session
+        ).get_payee_category_mappings,
     )
     forwarder = Forwarder(up, ynab, index, SqlLedger(database.get_session))
     return Services(up=up, forwarder=forwarder, budget_index=index)
@@ -116,6 +117,12 @@ async def ping_webhook(up: UpClient, url: str) -> bool:
 
 async def _run_startup_tasks(settings: Settings, services: Services) -> None:
     """Set up the Up webhook and build the budget index."""
+    for name in settings.ignored_env_vars():
+        logger.warning(
+            "Setting ignored",
+            name=name,
+            reason="ignored since 3.0.0; accounts are matched by name",
+        )
     try:
         if settings.webhook_url:
             webhook_exists = await ping_webhook(services.up, settings.webhook_url)
@@ -284,7 +291,7 @@ def create_app(
     # Manual refresh endpoint
     @app.get("/refresh", tags=["admin"])
     async def refresh_data() -> Dict[str, str]:
-        """Manually refresh category database."""
+        """Rebuild the Budget Index."""
         try:
             logger.info("Manual refresh requested")
 

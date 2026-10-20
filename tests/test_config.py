@@ -16,14 +16,12 @@ class TestSettings:
             up_api_token="test_up_token",
             ynab_api_token="test_ynab_token",
             ynab_budget_id="test_budget_id",
-            ynab_account_id="test_account_id",
             _env_file=None,
         )
 
         assert settings.up_api_token == "test_up_token"
         assert settings.ynab_api_token == "test_ynab_token"
         assert settings.ynab_budget_id == "test_budget_id"
-        assert settings.ynab_account_id == "test_account_id"
 
         # Test defaults
         assert settings.port == 5001
@@ -32,29 +30,8 @@ class TestSettings:
         assert settings.ynab_base_url == "https://api.youneedabudget.com/v1/"
         assert settings.database_url == "sqlite+aiosqlite:///./up_to_ynab.db"
 
-    def test_settings_default_transfer_strings(self):
-        """Test default internal transfer strings."""
-        settings = Settings(
-            up_api_token="test_up_token",
-            ynab_api_token="test_ynab_token",
-            ynab_budget_id="test_budget_id",
-            ynab_account_id="test_account_id",
-            _env_file=None,
-        )
-
-        expected_strings = [
-            "Transfer to ",
-            "Cover to ",
-            "Quick save transfer to ",
-            "Forward to ",
-        ]
-
-        assert settings.internal_transfer_strings == expected_strings
-
     def test_settings_custom_values(self):
         """Test settings with custom values."""
-        custom_transfer_strings = ["Custom transfer to "]
-
         settings = Settings(
             port=8080,
             debug_mode=True,
@@ -63,11 +40,9 @@ class TestSettings:
             webhook_url="https://custom.webhook.url/webhook",
             ynab_api_token="test_ynab_token",
             ynab_budget_id="test_budget_id",
-            ynab_account_id="test_account_id",
             _env_file=None,
             ynab_base_url="https://custom.ynab.api/v1/",
             database_url="postgresql://custom:db@localhost/test",
-            internal_transfer_strings=custom_transfer_strings,
         )
 
         assert settings.port == 8080
@@ -76,7 +51,6 @@ class TestSettings:
         assert settings.webhook_url == "https://custom.webhook.url/webhook"
         assert settings.ynab_base_url == "https://custom.ynab.api/v1/"
         assert settings.database_url == "postgresql://custom:db@localhost/test"
-        assert settings.internal_transfer_strings == custom_transfer_strings
 
     def test_settings_missing_required_fields(self, monkeypatch):
         """Test settings validation with missing required fields."""
@@ -84,7 +58,6 @@ class TestSettings:
         monkeypatch.delenv("UP_API_TOKEN", raising=False)
         monkeypatch.delenv("YNAB_API_TOKEN", raising=False)
         monkeypatch.delenv("YNAB_BUDGET_ID", raising=False)
-        monkeypatch.delenv("YNAB_ACCOUNT_ID", raising=False)
 
         # Prevent loading from .env file
         monkeypatch.setenv("PYDANTIC_SETTINGS_ENV_FILE", "")
@@ -103,7 +76,6 @@ class TestSettings:
             "up_api_token": "a",
             "ynab_api_token": "b",
             "ynab_budget_id": "c",
-            "ynab_account_id": "d",
         }
         for field in base:
             for bad in ("", "   "):
@@ -118,7 +90,6 @@ class TestSettings:
             up_api_token="  tok  ",
             ynab_api_token="b",
             ynab_budget_id="c",
-            ynab_account_id="d",
         )
         assert settings.up_api_token == "tok"
 
@@ -130,7 +101,6 @@ class TestSettings:
                 _env_file=None,
                 ynab_api_token="secret-ynab-token",
                 ynab_budget_id="c",
-                ynab_account_id="d",
             )
         message = str(exc_info.value)
         assert "up_api_token" in message
@@ -142,7 +112,6 @@ class TestSettings:
             "UP_API_TOKEN": "env_up_token",
             "YNAB_API_TOKEN": "env_ynab_token",
             "YNAB_BUDGET_ID": "env_budget_id",
-            "YNAB_ACCOUNT_ID": "env_account_id",
             "PORT": "9000",
             "DEBUG_MODE": "true",
         },
@@ -154,7 +123,6 @@ class TestSettings:
         assert settings.up_api_token == "env_up_token"
         assert settings.ynab_api_token == "env_ynab_token"
         assert settings.ynab_budget_id == "env_budget_id"
-        assert settings.ynab_account_id == "env_account_id"
         assert settings.port == 9000
         assert settings.debug_mode is True
 
@@ -164,7 +132,6 @@ class TestSettings:
             "UP_API_TOKEN": "env_up_token",
             "YNAB_API_TOKEN": "env_ynab_token",
             "YNAB_BUDGET_ID": "env_budget_id",
-            "YNAB_ACCOUNT_ID": "env_account_id",
         },
     )
     def test_settings_case_insensitive(self):
@@ -181,7 +148,6 @@ class TestSettings:
             "UP_API_TOKEN": "test_token",
             "YNAB_API_TOKEN": "test_token",
             "YNAB_BUDGET_ID": "test_budget",
-            "YNAB_ACCOUNT_ID": "test_account",
         },
     )
     def test_settings_model_config(self):
@@ -200,10 +166,8 @@ class TestSettings:
             "webhook_url",
             "ynab_api_token",
             "ynab_budget_id",
-            "ynab_account_id",
             "ynab_base_url",
             "database_url",
-            "internal_transfer_strings",
         }
 
         for field in expected_fields:
@@ -219,3 +183,58 @@ class TestSettings:
         assert "description" in properties.get("port", {})
         assert "description" in properties.get("up_api_token", {})
         assert "description" in properties.get("ynab_api_token", {})
+
+    def test_ignored_env_vars_none_by_default(self):
+        settings = Settings(
+            _env_file=None,
+            up_api_token="a",
+            ynab_api_token="b",
+            ynab_budget_id="c",
+        )
+
+        assert settings.ignored_env_vars() == []
+
+    def test_ignored_env_vars_from_environment(self, monkeypatch):
+        monkeypatch.setenv("YNAB_ACCOUNT_ID", "old")
+        monkeypatch.setenv("INTERNAL_TRANSFER_STRINGS", "[]")
+
+        settings = Settings(
+            _env_file=None,
+            up_api_token="a",
+            ynab_api_token="b",
+            ynab_budget_id="c",
+        )
+
+        assert settings.ignored_env_vars() == [
+            "YNAB_ACCOUNT_ID",
+            "INTERNAL_TRANSFER_STRINGS",
+        ]
+
+    def test_ignored_env_vars_from_env_file(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("YNAB_ACCOUNT_ID", raising=False)
+        monkeypatch.delenv("INTERNAL_TRANSFER_STRINGS", raising=False)
+        env_file = tmp_path / ".env"
+        env_file.write_text("INTERNAL_TRANSFER_STRINGS=whatever\n")
+
+        settings = Settings(
+            _env_file=env_file,
+            up_api_token="a",
+            ynab_api_token="b",
+            ynab_budget_id="c",
+        )
+
+        assert settings.ignored_env_vars() == ["INTERNAL_TRANSFER_STRINGS"]
+
+    def test_legacy_fields_are_not_dumped(self):
+        settings = Settings(
+            _env_file=None,
+            up_api_token="a",
+            ynab_api_token="b",
+            ynab_budget_id="c",
+            ynab_account_id="old",
+        )
+
+        dumped = settings.model_dump()
+
+        assert not any(key.startswith("legacy_") for key in dumped)
+        assert "old" not in repr(settings)

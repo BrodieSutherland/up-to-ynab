@@ -39,7 +39,6 @@ Automatically sync transactions from [Up Bank](https://up.com.au/) to [YNAB](htt
    UP_API_TOKEN=your_up_api_token_here
    YNAB_API_TOKEN=your_ynab_token_here
    YNAB_BUDGET_ID=your_budget_id_here
-   YNAB_ACCOUNT_ID=your_account_id_here
    WEBHOOK_URL=https://your-domain.com/webhook
    ```
 
@@ -73,11 +72,14 @@ The application will be available at `http://localhost:5001`.
 | `UP_API_TOKEN` | ✅ | - | Up Bank API token |
 | `YNAB_API_TOKEN` | ✅ | - | YNAB Personal Access Token |
 | `YNAB_BUDGET_ID` | ✅ | - | YNAB Budget ID |
-| `YNAB_ACCOUNT_ID` | ✅ | - | YNAB Account ID to sync to |
 | `WEBHOOK_URL` | ❌ | - | Public URL for Up Bank webhooks |
 | `PORT` | ❌ | 5001 | Server port |
 | `DEBUG_MODE` | ❌ | false | Enable debug logging |
 | `DATABASE_URL` | ❌ | sqlite:///./up_to_ynab.db | Database connection URL |
+
+### Account routing
+
+Each Up account's transactions go to the YNAB account with exactly the same name (case and emoji included). Closed YNAB accounts are ignored, and an Up account whose name matches no YNAB account, or more than one, is skipped. Rename your YNAB accounts to match before upgrading. `YNAB_ACCOUNT_ID` and `INTERNAL_TRANSFER_STRINGS` are no longer used; a warning is logged at startup if either is still set.
 
 ### Transfer Filtering
 
@@ -130,7 +132,7 @@ pip install -r requirements.txt
 python -m uvicorn --factory app:create_app --host 0.0.0.0 --port 5001
 ```
 
-The app refuses to start when a required token or ID (`UP_API_TOKEN`, `YNAB_API_TOKEN`, `YNAB_BUDGET_ID`, `YNAB_ACCOUNT_ID`) is missing or empty; the error names the field.
+The app refuses to start when a required token or ID (`UP_API_TOKEN`, `YNAB_API_TOKEN`, `YNAB_BUDGET_ID`) is missing or empty; the error names the field.
 
 For development (tests and linting), install `requirements-dev.txt` instead:
 ```bash

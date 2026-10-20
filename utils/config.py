@@ -34,7 +34,6 @@ class Settings(BaseSettings):
     # YNAB API configuration
     ynab_api_token: RequiredStr = Field(..., description="YNAB API token")
     ynab_budget_id: RequiredStr = Field(..., description="YNAB budget ID")
-    ynab_account_id: RequiredStr = Field(..., description="YNAB account ID")
     ynab_base_url: str = Field(
         default="https://api.youneedabudget.com/v1/",
         description="YNAB API base URL",
@@ -46,13 +45,22 @@ class Settings(BaseSettings):
         description="Database URL",
     )
 
-    # Transfer filtering
-    internal_transfer_strings: list[str] = Field(
-        default=[
-            "Transfer to ",
-            "Cover to ",
-            "Quick save transfer to ",
-            "Forward to ",
-        ],
-        description="Strings that identify internal transfers to exclude",
+    # Removed in 3.0.0; read only so startup can warn that they are ignored.
+    legacy_ynab_account_id: Optional[str] = Field(
+        None, validation_alias="ynab_account_id", exclude=True, repr=False
     )
+    legacy_internal_transfer_strings: Optional[str] = Field(
+        None,
+        validation_alias="internal_transfer_strings",
+        exclude=True,
+        repr=False,
+    )
+
+    def ignored_env_vars(self) -> list[str]:
+        """Names of removed settings that are still set."""
+        names = []
+        if self.legacy_ynab_account_id is not None:
+            names.append("YNAB_ACCOUNT_ID")
+        if self.legacy_internal_transfer_strings is not None:
+            names.append("INTERNAL_TRANSFER_STRINGS")
+        return names

@@ -1,5 +1,23 @@
+import json
+from pathlib import Path
+
 from clients.errors import UpstreamError
 from models.up_models import UpAccount, UpTransaction, UpWebhook
+
+
+def up_accounts_fixture() -> list[UpAccount]:
+    """The recorded Up /accounts response, parsed as HttpUpClient does."""
+    path = Path(__file__).parent.parent / "fixtures" / "up" / "accounts.json"
+    return [
+        UpAccount.model_validate({"id": item["id"], **item["attributes"]})
+        for item in json.loads(path.read_text())["data"]
+    ]
+
+
+def up_account(id: str, name: str) -> UpAccount:
+    """A fixture account with its id and display name replaced."""
+    base = up_accounts_fixture()[0]
+    return base.model_copy(update={"id": id, "display_name": name})
 
 
 class FakeUpClient:
@@ -17,6 +35,7 @@ class FakeUpClient:
         self.webhooks: list[UpWebhook] = list(webhooks)
         self.errors = dict(errors or {})
         self.created_webhooks: list[str] = []
+        self.list_accounts_calls = 0
 
     def _maybe_raise(self, method: str) -> None:
         if method in self.errors:
@@ -29,6 +48,7 @@ class FakeUpClient:
         return self.transactions[transaction_id]
 
     async def list_accounts(self) -> list[UpAccount]:
+        self.list_accounts_calls += 1
         self._maybe_raise("list_accounts")
         return list(self.accounts)
 

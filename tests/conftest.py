@@ -6,8 +6,8 @@ import pytest_asyncio
 from app import Services, build_services
 from database.connection import DatabaseManager
 from models.up_models import UpTransaction
-from tests.fakes.up import FakeUpClient
-from tests.fakes.ynab import FakeYnabClient
+from tests.fakes.up import FakeUpClient, up_account
+from tests.fakes.ynab import FakeYnabClient, ynab_account
 from utils.config import Settings
 
 # Test database URL
@@ -26,15 +26,8 @@ def test_settings() -> Settings:
         webhook_url="https://test.example.com/webhook",
         ynab_api_token="test_ynab_token",
         ynab_budget_id="test_budget_id",
-        ynab_account_id="test_account_id",
         ynab_base_url="https://api.youneedabudget.com/v1/",
         database_url=TEST_DATABASE_URL,
-        internal_transfer_strings=[
-            "Transfer to ",
-            "Cover to ",
-            "Quick save transfer to ",
-            "Forward to ",
-        ],
     )
 
 
@@ -53,12 +46,15 @@ async def database(
 def fake_up(sample_up_transaction_data) -> FakeUpClient:
     """Fake Up holding the sample transaction under its id."""
     transaction = UpTransaction(**sample_up_transaction_data["data"])
-    return FakeUpClient(transactions={"test-transaction-id": transaction})
+    return FakeUpClient(
+        transactions={"test-transaction-id": transaction},
+        accounts=[up_account("test-account-id", "Spending")],
+    )
 
 
 @pytest.fixture
 def fake_ynab() -> FakeYnabClient:
-    return FakeYnabClient()
+    return FakeYnabClient(accounts=[ynab_account("ynab-acct-1", "Spending")])
 
 
 @pytest.fixture

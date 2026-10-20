@@ -17,7 +17,6 @@ services:
       - WEBHOOK_URL=${WEBHOOK_URL}
       - YNAB_API_TOKEN=${YNAB_API_TOKEN}
       - YNAB_BUDGET_ID=${YNAB_BUDGET_ID}
-      - YNAB_ACCOUNT_ID=${YNAB_ACCOUNT_ID}
       - YNAB_BASE_URL=https://api.youneedabudget.com/v1/
       - DATABASE_URL=sqlite+aiosqlite:///./data/up_to_ynab.db
     volumes:
