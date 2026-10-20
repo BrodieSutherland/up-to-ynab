@@ -27,15 +27,15 @@ Money moving between two of the customer's own Up accounts. Up records it as two
 _Avoid_: internal transaction, internal transfer (when meaning the pair)
 
 **Originating side**:
-The half of a Transfer recorded on the account the money left ("Transfer to …", "Cover to …", "Quick save transfer to …", "Forward to …"). This is the half forwarded to YNAB, as a transfer.
+The half of a Transfer recorded on the account the money left ("Transfer to …", "Cover to …", "Quick save transfer to …", "Forward to …"). This is the half forwarded to YNAB: as a transfer when the other account has a YNAB account, otherwise as an ordinary transaction.
 _Avoid_: outgoing transaction, "to" side
 
 **Mirror side**:
-The half of a Transfer recorded on the account the money arrived in ("Transfer from …", "Cover from …", …). Never forwarded, because YNAB creates it from the Originating side.
+The half of a Transfer recorded on the account the money arrived in ("Transfer from …", "Cover from …", …). Not forwarded when both accounts have a YNAB account, because YNAB creates it from the Originating side. When only the Mirror side's account has one, it is forwarded as an ordinary transaction.
 _Avoid_: incoming transfer, "from" side, duplicate
 
 **Round Up**:
-Spare change Up moves from the Spending account into a Saver after a purchase. Treated as a Transfer whose other account is the Spending account.
+Spare change Up moves from the Spending account into a Saver after a purchase. Treated as a Transfer whose other account is the Spending account. Up shows only the Saver's half, so that half is forwarded in place of an Originating side.
 _Avoid_: roundup, spare change
 
 **Payee**:
@@ -57,5 +57,5 @@ Turning one Up transaction into either a YNAB transaction to create or a decisio
 _Avoid_: conversion, mapping, filtering
 
 **Ledger**:
-The record of every Up transaction the app has handled and what happened to it (forwarded, skipped, or failed). A transaction counts as handled once it has been forwarded or deliberately skipped; a failure does not count.
+The record of every Up transaction the app has handled and what happened to it (forwarded, skipped, or failed). A transaction counts as handled once it has been forwarded or deliberately skipped; a failure does not count. A failed transaction is attempted again when Up delivers it again.
 _Avoid_: processed transactions table, dedupe log
