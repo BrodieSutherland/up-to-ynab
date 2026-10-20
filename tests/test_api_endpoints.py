@@ -17,6 +17,9 @@ from tests.fakes.up import FakeUpClient
 from tests.fakes.ynab import FakeYnabClient, ynab_transaction
 from utils.config import Settings
 
+WEBHOOK = "https://test.example.com/webhook"
+V1 = "An automatic webhook to transfer data from Up into YNAB"
+V2 = "UP to YNAB transaction sync webhook"
 INDEX = BudgetIndex({"test-account-id": YnabAccountRef("acct-1", "tp-1")}, {})
 
 
@@ -188,12 +191,64 @@ class TestAPIStartupShutdown:
 
         assert up.created_webhooks == []
 
-    def test_startup_creates_webhook_when_listing_fails(self, test_settings, holder):
+    def test_startup_does_nothing_to_webhooks_when_listing_fails(
+        self, test_settings, holder
+    ):
         up = FakeUpClient(errors={"list_webhooks": UpstreamError("down", 503)})
+        app = create_app(test_settings, make_services(up, holder=holder))
+        with capture_logs() as logs:
+            with TestClient(app) as c:
+                assert c.get("/health").status_code == 200
+
+        assert up.created_webhooks == []
+        assert up.deleted_webhooks == []
+        assert holder.rebuild_count == 1
+        assert "Failed to list webhooks" in [e["event"] for e in logs]
+
+    def test_startup_removes_stale_and_duplicate_webhooks(self, test_settings, holder):
+        up = FakeUpClient(
+            webhooks=[
+                UpWebhook(id="v1", url="https://test.example.com/", description=V1),
+                UpWebhook(id="a", url=WEBHOOK, description=V2),
+                UpWebhook(id="dup", url=WEBHOOK, description=V2),
+            ]
+        )
         with _client(test_settings, up, holder) as c:
             assert c.get("/health").status_code == 200
 
-        assert up.created_webhooks == ["https://test.example.com/webhook"]
+        assert up.deleted_webhooks == ["v1", "dup"]
+        assert up.created_webhooks == []
+
+    def test_startup_survives_failed_webhook_deletion(self, test_settings, holder):
+        up = FakeUpClient(
+            webhooks=[
+                UpWebhook(id="old", url="https://test.example.com/", description=V1),
+                UpWebhook(id="a", url=WEBHOOK, description=V2),
+            ],
+            errors={"delete_webhook": UpstreamError("x", 500)},
+        )
+        with _client(test_settings, up, holder) as c:
+            assert c.get("/health").status_code == 200
+
+        assert holder.rebuild_count == 1
+
+    def test_refresh_reconciles_webhooks(self, test_settings, holder):
+        up = FakeUpClient()
+        with _client(test_settings, up, holder) as c:
+            up.webhooks.append(
+                UpWebhook(id="old", url="https://test.example.com/", description=V1)
+            )
+            response = c.get("/refresh")
+
+            assert response.status_code == 200
+            assert response.json() == {
+                "status": "success",
+                "message": "Data refreshed successfully",
+            }
+            assert up.deleted_webhooks == ["old"]
+
+            up.errors["list_webhooks"] = UpstreamError("down", 503)
+            assert c.get("/refresh").status_code == 200
 
     def test_startup_survives_failed_webhook_creation(self, test_settings, holder):
         up = FakeUpClient(errors={"create_webhook": UpstreamError("down", 500)})
@@ -208,6 +263,7 @@ class TestAPIStartupShutdown:
             assert c.get("/health").status_code == 200
 
         assert fake_up.created_webhooks == []
+        assert fake_up.list_webhooks_calls == 0
         assert holder.rebuild_count == 1
 
     def test_startup_survives_unexpected_error(self, test_settings, holder):

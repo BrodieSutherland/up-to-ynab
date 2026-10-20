@@ -27,6 +27,8 @@ class UpClient(Protocol):
         """Create a webhook and return its id."""
         ...
 
+    async def delete_webhook(self, webhook_id: str) -> None: ...
+
 
 class HttpUpClient:
     """UpClient over an injected httpx2.AsyncClient (the caller closes it)."""
@@ -51,6 +53,8 @@ class HttpUpClient:
                 f"{method} {path} -> {response.status_code}",
                 status_code=response.status_code,
             )
+        if response.status_code == 204 or not response.content:
+            return None
         try:
             return response.json()
         except ValueError as exc:
@@ -110,3 +114,6 @@ class HttpUpClient:
             return str(body["data"]["id"])
         except (KeyError, TypeError) as exc:
             raise UpstreamError("POST /webhooks returned unexpected shape") from exc
+
+    async def delete_webhook(self, webhook_id: str) -> None:
+        await self._request("DELETE", f"/webhooks/{webhook_id}")

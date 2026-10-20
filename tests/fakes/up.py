@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from clients.errors import UpstreamError
+from clients.up import WEBHOOK_DESCRIPTION
 from models.up_models import UpAccount, UpTransaction, UpWebhook
 
 
@@ -35,7 +36,9 @@ class FakeUpClient:
         self.webhooks: list[UpWebhook] = list(webhooks)
         self.errors = dict(errors or {})
         self.created_webhooks: list[str] = []
+        self.deleted_webhooks: list[str] = []
         self.list_accounts_calls = 0
+        self.list_webhooks_calls = 0
 
     def _maybe_raise(self, method: str) -> None:
         if method in self.errors:
@@ -53,10 +56,20 @@ class FakeUpClient:
         return list(self.accounts)
 
     async def list_webhooks(self) -> list[UpWebhook]:
+        self.list_webhooks_calls += 1
         self._maybe_raise("list_webhooks")
         return list(self.webhooks)
 
     async def create_webhook(self, url: str) -> str:
         self._maybe_raise("create_webhook")
         self.created_webhooks.append(url)
-        return f"webhook-{len(self.created_webhooks)}"
+        webhook_id = f"webhook-{len(self.created_webhooks)}"
+        self.webhooks.append(
+            UpWebhook(id=webhook_id, url=url, description=WEBHOOK_DESCRIPTION)
+        )
+        return webhook_id
+
+    async def delete_webhook(self, webhook_id: str) -> None:
+        self._maybe_raise("delete_webhook")
+        self.deleted_webhooks.append(webhook_id)
+        self.webhooks = [w for w in self.webhooks if w.id != webhook_id]

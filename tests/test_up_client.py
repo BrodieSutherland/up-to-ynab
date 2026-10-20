@@ -183,6 +183,25 @@ class TestWebhooks:
 
         assert exc_info.value.status_code == 401
 
+    async def test_delete_webhook_sends_delete_and_accepts_204(self):
+        client, requests = make_client(lambda request: httpx.Response(204))
+
+        result = await client.delete_webhook("w1")
+
+        [request] = requests
+        assert request.method == "DELETE"
+        assert request.url.path == "/api/v1/webhooks/w1"
+        assert request.headers["Authorization"] == "Bearer test_up_token"
+        assert result is None
+
+    async def test_delete_webhook_failure_raises(self):
+        client, _ = make_client(respond(404))
+
+        with pytest.raises(UpstreamError) as exc_info:
+            await client.delete_webhook("w1")
+
+        assert exc_info.value.status_code == 404
+
 
 async def test_token_never_logged_or_in_errors():
     def handler(request):

@@ -21,6 +21,7 @@ from forwarding.ledger import Failed, Forwarded, Skipped, SqlLedger
 from models.up_models import UpWebhookEvent
 from utils.config import Settings
 from utils.logging import setup_logging
+from webhooks import plan_webhook_changes
 
 logger = structlog.get_logger()
 
@@ -85,33 +86,47 @@ async def open_services(settings: Settings) -> AsyncIterator[Services]:
         yield build_services(settings, database, up, ynab)
 
 
-async def ping_webhook(up: UpClient, url: str) -> bool:
-    """Make sure a webhook for url exists in Up, creating it if missing."""
+async def reconcile_webhooks(up: UpClient, webhook_url: str | None) -> None:
+    """Make exactly one Up webhook point at webhook_url; upstream errors are logged."""
+    if not webhook_url:
+        logger.info("No webhook URL configured - webhook setup skipped")
+        return
     try:
-        webhooks = await up.list_webhooks()
-        logger.info("Retrieved webhooks", count=len(webhooks))
+        registered = await up.list_webhooks()
     except UpstreamError as e:
         logger.error("Failed to list webhooks", status_code=e.status_code, error=str(e))
-        webhooks = []
-
-    if any(webhook.url == url for webhook in webhooks):
-        logger.info("Webhook already exists", url=url)
-        return True
-
-    logger.info("Webhook not found, creating new one", url=url)
-    try:
-        webhook_id = await up.create_webhook(url)
-    except UpstreamError as e:
-        logger.error(
-            "Failed to create webhook", url=url, status_code=e.status_code, error=str(e)
-        )
-        return False
-    logger.info("Webhook created successfully", webhook_id=webhook_id, url=url)
-    return True
+        return
+    plan = plan_webhook_changes(registered, webhook_url)
+    for warning in plan.warnings:
+        logger.warning("Webhook left in place", detail=warning)
+    for webhook_id in plan.delete:
+        try:
+            await up.delete_webhook(webhook_id)
+        except UpstreamError as e:
+            logger.error(
+                "Failed to delete webhook",
+                webhook_id=webhook_id,
+                status_code=e.status_code,
+                error=str(e),
+            )
+        else:
+            logger.info("Webhook deleted", webhook_id=webhook_id)
+    if plan.create:
+        try:
+            webhook_id = await up.create_webhook(webhook_url)
+        except UpstreamError as e:
+            logger.error(
+                "Failed to create webhook",
+                url=webhook_url,
+                status_code=e.status_code,
+                error=str(e),
+            )
+        else:
+            logger.info("Webhook created", webhook_id=webhook_id, url=webhook_url)
 
 
 async def _run_startup_tasks(settings: Settings, services: Services) -> None:
-    """Set up the Up webhook and build the budget index."""
+    """Reconcile the Up webhooks and build the budget index."""
     for name in settings.ignored_env_vars():
         logger.warning(
             "Setting ignored",
@@ -119,14 +134,7 @@ async def _run_startup_tasks(settings: Settings, services: Services) -> None:
             reason="ignored since 3.0.0; accounts are matched by name",
         )
     try:
-        if settings.webhook_url:
-            webhook_exists = await ping_webhook(services.up, settings.webhook_url)
-            if webhook_exists:
-                logger.info("Webhook is ready", url=settings.webhook_url)
-            else:
-                logger.error("Failed to setup webhook", url=settings.webhook_url)
-        else:
-            logger.info("No webhook URL configured - webhook setup skipped")
+        await reconcile_webhooks(services.up, settings.webhook_url)
 
         try:
             await services.budget_index.rebuild()
@@ -191,6 +199,8 @@ def create_app(
         debug=settings.debug_mode,
         lifespan=_lifespan(settings, services),
     )
+
+    app.state.settings = settings
 
     # Add CORS middleware
     app.add_middleware(
@@ -301,6 +311,9 @@ def create_app(
         try:
             logger.info("Manual refresh requested")
 
+            await reconcile_webhooks(
+                app.state.services.up, app.state.settings.webhook_url
+            )
             await app.state.services.budget_index.rebuild()
             return {"status": "success", "message": "Data refreshed successfully"}
 
