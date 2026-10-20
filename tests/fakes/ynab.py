@@ -25,6 +25,27 @@ def ynab_account(
     )
 
 
+def ynab_transaction(
+    id: str,
+    payee_name: str | None,
+    category_id: str | None,
+    *,
+    transfer_account_id: str | None = None,
+    deleted: bool = False,
+    subtransactions=(),
+) -> YnabTransaction:
+    return YnabTransaction(
+        id=id,
+        date="2024-01-01",
+        amount=-1000,
+        payee_name=payee_name,
+        category_id=category_id,
+        transfer_account_id=transfer_account_id,
+        deleted=deleted,
+        subtransactions=list(subtransactions),
+    )
+
+
 class FakeYnabClient:
     """In-memory YnabClient. `errors[method_name]` is raised when that method runs."""
 

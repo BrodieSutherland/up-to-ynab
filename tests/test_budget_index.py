@@ -3,7 +3,6 @@ from structlog.testing import capture_logs
 
 from clients.errors import UpstreamError
 from forwarding.budget_index import (
-    BudgetIndex,
     BudgetIndexHolder,
     IndexUnavailable,
     NotInYnab,
@@ -12,7 +11,7 @@ from forwarding.budget_index import (
     build_budget_index,
 )
 from tests.fakes.up import FakeUpClient, up_account, up_accounts_fixture
-from tests.fakes.ynab import FakeYnabClient, ynab_account
+from tests.fakes.ynab import FakeYnabClient, ynab_account, ynab_transaction
 
 UP = up_accounts_fixture()  # accounts-1 "Spending", accounts-2..4 "🙂 Saver 1..3"
 
@@ -82,12 +81,90 @@ def test_unmatched_accounts_are_logged():
     assert unmatched == ["accounts-2", "accounts-3", "accounts-4"]
 
 
-def test_category_match():
-    index = build_budget_index(UP, [], {"Test Merchant": "cat-1"})
+SPLIT = [
+    {
+        "id": "s1",
+        "transaction_id": "t3",
+        "amount": -500,
+        "category_id": "cat-a",
+        "deleted": False,
+    }
+]
 
-    assert index.category_match("Test Merchant") == "cat-1"
-    assert index.category_match("Other") is None
-    assert isinstance(index, BudgetIndex)
+
+@pytest.mark.parametrize(
+    "transactions, expected",
+    [
+        (
+            [
+                ynab_transaction("t1", "Cafe", "cat-a"),
+                ynab_transaction("t2", "Cafe", "cat-a"),
+            ],
+            "cat-a",
+        ),
+        (
+            [
+                ynab_transaction("t1", "Cafe", "cat-a"),
+                ynab_transaction("t2", "Cafe", "cat-b"),
+            ],
+            None,
+        ),
+        (
+            [
+                ynab_transaction("t1", "Cafe", "cat-a"),
+                ynab_transaction("t2", "Cafe", "cat-b", transfer_account_id="y9"),
+            ],
+            "cat-a",
+        ),
+        (
+            [
+                ynab_transaction("t1", "Cafe", "cat-a"),
+                ynab_transaction("t3", "Cafe", "split-cat", subtransactions=SPLIT),
+            ],
+            "cat-a",
+        ),
+        (
+            [
+                ynab_transaction("t1", "Cafe", "cat-a"),
+                ynab_transaction("t2", "Cafe", None),
+            ],
+            "cat-a",
+        ),
+        (
+            [
+                ynab_transaction("t1", "Cafe", "cat-a"),
+                ynab_transaction("t2", "Cafe", "cat-b", deleted=True),
+            ],
+            "cat-a",
+        ),
+        (
+            [
+                ynab_transaction("t1", "Cafe", "cat-a", transfer_account_id="y9"),
+                ynab_transaction("t2", "Cafe", None),
+                ynab_transaction("t3", "Cafe", "cat-b", deleted=True),
+            ],
+            None,
+        ),
+        ([ynab_transaction("t1", "Other", "cat-a")], None),
+    ],
+)
+def test_category_match(transactions, expected):
+    index = build_budget_index(UP, [], transactions)
+
+    assert index.category_match("Cafe") == expected
+
+
+def test_payee_name_none_is_ignored():
+    index = build_budget_index(UP, [], [ynab_transaction("t1", None, "cat-a")])
+
+    assert dict(index.category_by_payee) == {}
+
+
+def test_exact_payee_name():
+    index = build_budget_index(UP, [], [ynab_transaction("t1", "Cafe", "cat-a")])
+
+    assert index.category_match("Cafe") == "cat-a"
+    assert index.category_match("cafe") is None
 
 
 class Harness:
@@ -158,13 +235,25 @@ async def test_unbuilt_index_with_failing_lazy_rebuild_is_unavailable():
     assert any(e["event"] == "Lazy Budget Index rebuild failed" for e in logs)
 
 
-async def test_rebuild_loads_categories():
-    async def load():
-        return {"Test Merchant": "cat-1"}
-
+async def test_rebuild_fetches_all_time_history():
     h = Harness([up_account("u1", "Spending")], [ynab_account("y1", "Spending")])
-    holder = BudgetIndexHolder(h.up, h.ynab, load_categories=load)
-    await holder.rebuild()
+    h.ynab.transactions = [ynab_transaction("t1", "Cafe", "cat-a")]
 
-    index = await holder.current_for("u1")
-    assert index.category_match("Test Merchant") == "cat-1"
+    await h.holder.rebuild()
+    index = await h.holder.current_for("u1")
+
+    assert h.ynab.since_dates == ["1970-01-01"]
+    assert index.category_match("Cafe") == "cat-a"
+
+
+async def test_failed_history_fetch_keeps_previous_index():
+    h = Harness([up_account("u1", "Spending")], [ynab_account("y1", "Spending")])
+    h.ynab.transactions = [ynab_transaction("t1", "Cafe", "cat-a")]
+    await h.holder.rebuild()
+    h.ynab.errors["list_transactions"] = UpstreamError("down", 503)
+
+    with pytest.raises(UpstreamError):
+        await h.holder.rebuild()
+    index = await h.holder.current_for("u1")
+
+    assert index.category_match("Cafe") == "cat-a"

@@ -40,11 +40,10 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 
 ## Layout
 
-- `app.py` — composition root: `Services` dataclass, `build_services(settings, database, up, ynab)`, `open_services(settings)` (owns the DB and both `httpx2.AsyncClient`s via one `AsyncExitStack`, builds real services, closes everything on exit), `ping_webhook(up, url)`, `create_app(settings=None, services=None)` and its lifespan (webhook ping + category refresh; owns services only when it built them). Routes read `app.state.services`. Start with `uvicorn --factory app:create_app`; there is no module-level `app`.
-- `forwarding/` — `Forwarder` (webhook event → Ledger check → fetch from Up → translate → create in YNAB → record outcome; returns Forwarded / Skipped / Failed / Ignored), `ledger.py` (`Ledger` protocol, `SqlLedger` on `ledger_entries`), `translation.py` (pure `translate`, `create_import_id`), `budget_index.py` (pure `build_budget_index` matching Up to YNAB accounts by exact name, immutable `BudgetIndex`, and `BudgetIndexHolder` which rebuilds at startup, on `/refresh`, and lazily (at most once a minute, injected clock) for an unknown Up account; raises `IndexUnavailable` if never built).
+- `app.py` — composition root: `Services` dataclass, `build_services(settings, database, up, ynab)`, `open_services(settings)` (owns the DB and both `httpx2.AsyncClient`s via one `AsyncExitStack`, builds real services, closes everything on exit), `ping_webhook(up, url)`, `create_app(settings=None, services=None)` and its lifespan (webhook ping + Budget Index build; owns services only when it built them). Routes read `app.state.services`. Start with `uvicorn --factory app:create_app`; there is no module-level `app`.
+- `forwarding/` — `Forwarder` (webhook event → Ledger check → fetch from Up → translate → create in YNAB → record outcome; returns Forwarded / Skipped / Failed / Ignored), `ledger.py` (`Ledger` protocol, `SqlLedger` on `ledger_entries`), `translation.py` (pure `translate`, `create_import_id`), `budget_index.py` (pure `build_budget_index` matching Up to YNAB accounts by exact name and deriving the Category match per payee from all-time YNAB transactions (`since_date=1970-01-01`; transfers, splits, uncategorised and deleted excluded; one category only), immutable `BudgetIndex`, and `BudgetIndexHolder` which rebuilds at startup, on `/refresh`, and lazily (at most once a minute, injected clock) for an unknown Up account; raises `IndexUnavailable` if never built).
 - `clients/` — `UpClient` / `YnabClient` Protocols, each with an `Http*Client` adapter on an injected `httpx2.AsyncClient` opened/closed by `open_services`. Non-success, transport and parse errors raise `clients.errors.UpstreamError`; a YNAB 409 on create returns `AlreadyImported`. YNAB paths use `/plans/`. Adapters don't log.
-- `services/category_service.py` — DB access for payee→category mappings.
-- `database/` — SQLAlchemy 2.0 async models + `DatabaseManager(database_url, echo)` (no global instance) and the `SessionFactory` type that `CategoryService` receives.
+- `database/` — SQLAlchemy 2.0 async models + `DatabaseManager(database_url, echo)` (no global instance) and the `SessionFactory` type that `SqlLedger` receives. The old `payee_category_mappings` table is no longer modelled; in existing databases it is left in place, unread.
 - `models/` — Pydantic v2 models for Up and YNAB API payloads.
 - `utils/config.py` — `pydantic-settings` `Settings`, built once in `create_app` (no cache, no getter). Required token/ID fields reject missing, empty and whitespace values; `hide_input_in_errors=True` keeps secrets out of validation errors.
 - `utils/filters.py` — internal-transfer filtering by payee substring; `TransactionFilter(strings=INTERNAL_TRANSFER_STRINGS)` uses the module constant (no setting; removed in ticket 10).
@@ -75,7 +74,6 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 
 ## Known gaps (don't assume these work)
 
-- `CategoryService.sync_categories_from_ynab` is a TODO: it no longer fetches YNAB and never writes `payee_category_mappings`. Nothing calls `update_payee_category_mapping`, so every transaction currently goes to YNAB uncategorised.
 - DB model timestamp defaults use `default=datetime.now(UTC)` (evaluated once at import), not a callable.
 - No Alembic installed and no migrations; schema is created via `Base.metadata.create_all` on startup.
 - `/refresh` and `/webhook` have no auth; webhook signature (`X-Up-Authenticity-Signature`) is not verified.

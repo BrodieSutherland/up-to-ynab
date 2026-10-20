@@ -17,7 +17,6 @@ from forwarding.budget_index import BudgetIndexHolder
 from forwarding.forwarder import Forwarder
 from forwarding.ledger import Failed, Forwarded, Skipped, SqlLedger
 from models.up_models import UpWebhookEvent
-from services.category_service import CategoryService
 from utils.config import Settings
 from utils.logging import setup_logging
 
@@ -60,13 +59,7 @@ def build_services(
     settings: Settings, database: DatabaseManager, up: UpClient, ynab: YnabClient
 ) -> Services:
     """Wire services from settings and clients; the only place they are built."""
-    index = BudgetIndexHolder(
-        up,
-        ynab,
-        load_categories=CategoryService(  # ticket 07 replaces load_categories
-            database.get_session
-        ).get_payee_category_mappings,
-    )
+    index = BudgetIndexHolder(up, ynab)
     forwarder = Forwarder(up, ynab, index, SqlLedger(database.get_session))
     return Services(up=up, forwarder=forwarder, budget_index=index)
 
@@ -257,7 +250,7 @@ def create_app(
         2. Check if it's a TRANSACTION_CREATED event
         3. Fetch the transaction details from Up Bank API
         4. Filter out internal transfers
-        5. Map payee to YNAB category using historical data
+        5. Look up the payee's Category match in the Budget Index
         6. Create the transaction in YNAB and record the outcome
 
         Answers 503 when forwarding failed so Up redelivers the event;

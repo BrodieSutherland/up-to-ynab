@@ -1,18 +1,20 @@
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Awaitable, Callable, Mapping
+from typing import Callable, Mapping
 
 import structlog
 
 from clients.up import UpClient
 from clients.ynab import YnabClient
 from models.up_models import UpAccount
-from models.ynab_models import YnabAccount
+from models.ynab_models import YnabAccount, YnabTransaction
 
 logger = structlog.get_logger()
 
 LAZY_REBUILD_INTERVAL_S = 60.0
+ALL_TIME = "1970-01-01"
 
 
 @dataclass(frozen=True)
@@ -42,7 +44,7 @@ class BudgetIndex:
     """Routing data: YNAB account per Up account, and category per payee."""
 
     accounts: Mapping[str, YnabAccountRef | NotInYnab]
-    category_by_payee: Mapping[str, str] = MappingProxyType({})  # ticket 07 replaces
+    category_by_payee: Mapping[str, str] = MappingProxyType({})
 
     def account(
         self, up_account_id: str
@@ -57,7 +59,7 @@ class BudgetIndex:
 def build_budget_index(
     up_accounts: list[UpAccount],
     ynab_accounts: list[YnabAccount],
-    category_by_payee: Mapping[str, str] | None = None,
+    ynab_transactions: Iterable[YnabTransaction] = (),
 ) -> BudgetIndex:
     """Match each Up account to the open YNAB account with exactly its name."""
     by_name: dict[str, list[YnabAccount]] = {}
@@ -87,8 +89,29 @@ def build_budget_index(
             )
         accounts[up_account.id] = NotInYnab()
     return BudgetIndex(
-        MappingProxyType(accounts), MappingProxyType(dict(category_by_payee or {}))
+        MappingProxyType(accounts),
+        MappingProxyType(_category_by_payee(ynab_transactions)),
     )
+
+
+def _category_by_payee(transactions: Iterable[YnabTransaction]) -> dict[str, str]:
+    """Payees whose counted transactions all share exactly one category.
+
+    Deleted transactions, transfers, splits and uncategorised or payee-less
+    transactions are not counted. Payee names match exactly.
+    """
+    seen: dict[str, set[str]] = {}
+    for t in transactions:
+        if (
+            t.deleted
+            or t.transfer_account_id
+            or t.subtransactions
+            or t.category_id is None
+            or t.payee_name is None
+        ):
+            continue
+        seen.setdefault(t.payee_name, set()).add(t.category_id)
+    return {payee: next(iter(c)) for payee, c in seen.items() if len(c) == 1}
 
 
 class BudgetIndexHolder:
@@ -98,12 +121,10 @@ class BudgetIndexHolder:
         self,
         up: UpClient,
         ynab: YnabClient,
-        load_categories: Callable[[], Awaitable[Mapping[str, str]]] | None = None,
         clock: Callable[[], float] = time.monotonic,
     ):
         self._up = up
         self._ynab = ynab
-        self._load_categories = load_categories
         self._clock = clock
         self._index: BudgetIndex | None = None
         self._last_lazy: float | None = None
@@ -112,13 +133,14 @@ class BudgetIndexHolder:
         """Rebuild the index; on failure raise and keep the previous one."""
         up_accounts = await self._up.list_accounts()
         ynab_accounts = await self._ynab.list_accounts()
-        categories = await self._load_categories() if self._load_categories else {}
-        index = build_budget_index(up_accounts, ynab_accounts, categories)
+        history = await self._ynab.list_transactions(since_date=ALL_TIME)
+        index = build_budget_index(up_accounts, ynab_accounts, history)
         self._index = index
         logger.info(
             "Budget Index rebuilt",
             up_accounts=len(up_accounts),
             matched=sum(isinstance(a, YnabAccountRef) for a in index.accounts.values()),
+            categorised_payees=len(index.category_by_payee),
         )
 
     async def current_for(self, up_account_id: str) -> BudgetIndex:

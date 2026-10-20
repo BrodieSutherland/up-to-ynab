@@ -12,7 +12,7 @@ from models.up_models import UpTransaction, UpWebhook
 from tests.fakes.budget_index import FakeIndexHolder
 from tests.fakes.ledger import InMemoryLedger
 from tests.fakes.up import FakeUpClient
-from tests.fakes.ynab import FakeYnabClient
+from tests.fakes.ynab import FakeYnabClient, ynab_transaction
 from utils.config import Settings
 
 INDEX = BudgetIndex({"test-account-id": YnabAccountRef("acct-1", "tp-1")}, {})
@@ -276,6 +276,20 @@ class TestBudgetIndexThroughApp:
 
         assert fake_up.list_accounts_calls == 2
         assert fake_ynab.list_accounts_calls == 2
+
+    def test_purchase_gets_category_match_end_to_end(
+        self, test_settings, services, fake_ynab, sample_up_webhook_event_data
+    ):
+        fake_ynab.transactions = [
+            ynab_transaction("t1", "Test Merchant", "cat-groceries")
+        ]
+        with TestClient(create_app(test_settings, services)) as c:
+            response = c.post("/webhook", json=sample_up_webhook_event_data)
+            assert c.get("/refresh").status_code == 200
+
+        assert response.status_code == 200
+        assert fake_ynab.created[0].category_id == "cat-groceries"
+        assert fake_ynab.since_dates == ["1970-01-01", "1970-01-01"]
 
     def test_startup_without_index_boots_and_webhook_is_503(
         self, test_settings, services, fake_ynab, sample_up_webhook_event_data
