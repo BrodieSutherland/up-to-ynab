@@ -1,5 +1,6 @@
+import asyncio
 import time
-from collections.abc import Iterable
+from collections.abc import Awaitable, Iterable
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Callable, Mapping
@@ -14,6 +15,7 @@ from models.ynab_models import YnabAccount, YnabTransaction
 logger = structlog.get_logger()
 
 LAZY_REBUILD_INTERVAL_S = 60.0
+TIMED_REBUILD_INTERVAL_S = 6 * 60 * 60
 ALL_TIME = "1970-01-01"
 
 
@@ -164,3 +166,17 @@ class BudgetIndexHolder:
             await self.rebuild()
         except Exception as e:
             logger.warning("Lazy Budget Index rebuild failed", error=str(e))
+
+
+async def rebuild_periodically(
+    rebuild: Callable[[], Awaitable[None]],
+    interval_s: float = TIMED_REBUILD_INTERVAL_S,
+    sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+) -> None:
+    """Sleep, then rebuild, forever; a failed rebuild is logged, old index kept."""
+    while True:
+        await sleep(interval_s)
+        try:
+            await rebuild()
+        except Exception as e:  # CancelledError is BaseException, still propagates
+            logger.error("Timed Budget Index rebuild failed", error=str(e))

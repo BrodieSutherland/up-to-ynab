@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from structlog.testing import capture_logs
 
@@ -9,6 +11,7 @@ from forwarding.budget_index import (
     UnknownUpAccount,
     YnabAccountRef,
     build_budget_index,
+    rebuild_periodically,
 )
 from tests.fakes.up import FakeUpClient, up_account, up_accounts_fixture
 from tests.fakes.ynab import FakeYnabClient, ynab_account, ynab_transaction
@@ -257,3 +260,56 @@ async def test_failed_history_fetch_keeps_previous_index():
     index = await h.holder.current_for("u1")
 
     assert index.category_match("Cafe") == "cat-a"
+
+
+class FakeSleep:
+    """Records each interval; cancels the loop after `ticks` sleeps."""
+
+    def __init__(self, ticks):
+        self.ticks = ticks
+        self.calls = []
+
+    async def __call__(self, interval_s):
+        self.calls.append(interval_s)
+        if len(self.calls) > self.ticks:
+            raise asyncio.CancelledError
+
+
+async def test_timer_tick_rebuilds_once():
+    h = Harness([up_account("u1", "Spending")], [ynab_account("y1", "Spending")])
+    fake = FakeSleep(2)
+
+    with pytest.raises(asyncio.CancelledError):
+        await rebuild_periodically(h.holder.rebuild, sleep=fake)
+
+    assert h.up.list_accounts_calls == 2
+    assert fake.calls == [21600, 21600, 21600]
+
+
+async def test_timer_picks_up_new_account():
+    h = Harness([up_account("u1", "Spending")], [ynab_account("y1", "Spending")])
+    await h.holder.rebuild()
+    h.up.accounts.append(up_account("u2", "Bills"))
+    h.ynab.accounts.append(ynab_account("y2", "Bills", transfer_payee_id="tp2"))
+
+    with pytest.raises(asyncio.CancelledError):
+        await rebuild_periodically(h.holder.rebuild, sleep=FakeSleep(1))
+
+    index = await h.holder.current_for("u2")
+    assert index.account("u2") == YnabAccountRef("y2", "tp2")
+
+
+async def test_failed_timed_rebuild_keeps_old_index_and_loop_continues():
+    h = Harness([up_account("u1", "Spending")], [ynab_account("y1", "Spending")])
+    await h.holder.rebuild()
+    h.ynab.errors["list_accounts"] = UpstreamError("down", 503)
+
+    with capture_logs() as logs:
+        with pytest.raises(asyncio.CancelledError):
+            await rebuild_periodically(h.holder.rebuild, sleep=FakeSleep(2))
+
+    failures = [e for e in logs if e["event"] == "Timed Budget Index rebuild failed"]
+    assert len(failures) == 2
+    assert h.up.list_accounts_calls == 3
+    index = await h.holder.current_for("u1")
+    assert index.account("u1") == YnabAccountRef("y1", "tp-y1")

@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, Protocol
@@ -13,7 +15,7 @@ from clients.errors import UpstreamError
 from clients.up import HttpUpClient, UpClient
 from clients.ynab import HttpYnabClient, YnabClient
 from database.connection import DatabaseManager
-from forwarding.budget_index import BudgetIndexHolder
+from forwarding.budget_index import BudgetIndexHolder, rebuild_periodically
 from forwarding.forwarder import Forwarder
 from forwarding.ledger import Failed, Forwarded, Skipped, SqlLedger
 from models.up_models import UpWebhookEvent
@@ -139,6 +141,12 @@ async def _run_startup_tasks(settings: Settings, services: Services) -> None:
         )
 
 
+async def _stop_task(task: asyncio.Task) -> None:
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
 def _lifespan(settings: Settings, services: Services | None):
     """Build the lifespan; real services are owned here, injected ones are not."""
 
@@ -153,6 +161,11 @@ def _lifespan(settings: Settings, services: Services | None):
             else:
                 app.state.services = services
             await _run_startup_tasks(settings, app.state.services)
+            task = asyncio.create_task(
+                rebuild_periodically(app.state.services.budget_index.rebuild)
+            )
+            app.state.rebuild_task = task
+            stack.push_async_callback(_stop_task, task)
             logger.info("UP to YNAB application started successfully")
             yield
             logger.info("Shutting down UP to YNAB application")

@@ -1,3 +1,5 @@
+import warnings
+
 import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
@@ -359,3 +361,25 @@ class TestBudgetIndexThroughApp:
                 pass
 
         assert not [e for e in logs if e["event"] == "Setting ignored"]
+
+
+class TestRebuildTaskLifespan:
+    def test_lifespan_starts_and_cancels_rebuild_task(self, test_settings, services):
+        app = create_app(test_settings, services)
+
+        with TestClient(app):
+            assert not app.state.rebuild_task.done()
+
+        assert app.state.rebuild_task.cancelled()
+
+    def test_lifespan_shutdown_has_no_pending_task_warning(
+        self, test_settings, services
+    ):
+        app = create_app(test_settings, services)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with TestClient(app):
+                pass
+
+        assert app.state.rebuild_task.cancelled()
