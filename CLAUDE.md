@@ -22,7 +22,7 @@ black . && isort . && flake8 --extend-ignore=E203,W503 .   # must pass: CI runs 
 python -m uvicorn --factory app:create_app --port 5001 --reload             # needs .env (see .env.example)
 ```
 
-CI (`.github/workflows/ci.yml`) runs on pushes to `main`/`develop`, `v*` tags, and PRs into `main` and `develop`. It runs tests (Python 3.11 and 3.14) with an app-only branch coverage gate (`[tool.coverage]` in `pyproject.toml`; `fail_under` is currently 89, ratcheting to 90; new top-level packages must be added to coverage `source`) and black/isort/flake8 checks, a Docker build + `/health` smoke test, and Trivy. CodeQL runs from `.github/workflows/codeql.yml` (advanced setup, so it also covers Dependabot PRs; repo-level "default setup" must stay disabled or the uploads conflict). The multi-arch image (`docker-publish.yml`, a reusable workflow called as the `image` job) is built on PRs without pushing, and is published to Docker Hub only from `main` / `v*` tags after all checks pass. The metadata step uses `flavor: latest=false`, so only `main` moves `latest`. `CI OK` is the single required status check. Dependabot patch PRs auto-merge via a GitHub App token (secrets `AUTOMERGE_APP_ID`, `AUTOMERGE_APP_PRIVATE_KEY`) once `CI OK` passes.
+CI (`.github/workflows/ci.yml`) runs on pushes to `main`/`develop`, `v*` tags, and PRs into `main` and `develop`. It runs tests (Python 3.11 and 3.14) with an app-only branch coverage gate (`[tool.coverage]` in `pyproject.toml`; `fail_under` is 97; new top-level packages must be added to coverage `source`) and black/isort/flake8 checks, a Docker build + `/health` smoke test, and Trivy. CodeQL runs from `.github/workflows/codeql.yml` (advanced setup, so it also covers Dependabot PRs; repo-level "default setup" must stay disabled or the uploads conflict). The multi-arch image (`docker-publish.yml`, a reusable workflow called as the `image` job) is built on PRs without pushing, and is published to Docker Hub only from `main` / `v*` tags after all checks pass. The metadata step uses `flavor: latest=false`, so only `main` moves `latest`. `CI OK` is the single required status check. Dependabot patch PRs auto-merge via a GitHub App token (secrets `AUTOMERGE_APP_ID`, `AUTOMERGE_APP_PRIVATE_KEY`) once `CI OK` passes.
 
 ## Code navigation & editing (Serena MCP)
 
@@ -33,14 +33,18 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 - **Before changing a signature:** run `find_referencing_symbols`. High-traffic symbols:
   - `Ledger.record` (called by `Forwarder.handle`; `SqlLedger` and `InMemoryLedger` implement it)
   - `build_services` (the only place services are built; every constructor takes plain values or other services)
-  - `UpTransaction` properties (`payee`, `amount_milliunits`)
-- **Renames/deletes:** use `rename_symbol` and `safe_delete_symbol`. **Caveat:** the only string patches left in `tests/` are `patch("httpx2.AsyncClient")` (until ticket 04 injects the HTTP client); the language server does not update those strings. After any rename or move, grep `tests/` for the old dotted path and run `pytest`.
+  - `UpClient` / `YnabClient` Protocols (the `Http*Client` adapters and `tests/fakes` implement them)
+  - `translate` / `cleared_status` (`forwarding/translation.py`)
+  - `build_budget_index` / `BudgetIndexHolder.current_for`
+  - `plan_webhook_changes` (`webhooks.py`)
+  - `UpTransaction` properties (`payee`, `amount_milliunits`, `account_id`, `transfer_account_id`)
+- **Renames/deletes:** use `rename_symbol` and `safe_delete_symbol`. The language server does not update dotted paths in strings, so after any rename or move grep `tests/` for the old name and run `pytest`.
 - **Edits:** use `replace_symbol_body` for whole methods. Use `replace_content` for a few lines inside a method. Use `replace_in_files` (with `dry_run` first) for the same change across files.
 - **Memories:** if you change something a Serena memory describes (layout, commands, conventions), update that memory with `edit_memory` too. This file and the memories should not contradict each other.
 
 ## Layout
 
-- `app.py` — composition root: `Services` dataclass, `build_services(settings, database, up, ynab)`, `open_services(settings)` (owns the DB and both `httpx2.AsyncClient`s via one `AsyncExitStack`, builds real services, closes everything on exit), `reconcile_webhooks(up, webhook_url)` (lists hooks, executes `plan_webhook_changes`; only `UpstreamError` is caught, so listing failure means no create/delete), `create_app(settings=None, services=None)` and its lifespan (webhook reconciliation + Budget Index build, then starts the 6-hourly rebuild task as `app.state.rebuild_task` and cancels it on shutdown before services close; owns services only when it built them). Routes read `app.state.services`. Start with `uvicorn --factory app:create_app`; there is no module-level `app`.
+- `app.py` — composition root: module-level `VERSION` (3.0.0; feeds FastAPI metadata and `/health`, `pyproject.toml` kept in step, `tests/test_version.py` checks it), `Services` dataclass, `build_services(settings, database, up, ynab)`, `open_services(settings)` (owns the DB and both `httpx2.AsyncClient`s via one `AsyncExitStack`, builds real services, closes everything on exit), `reconcile_webhooks(up, webhook_url)` (lists hooks, executes `plan_webhook_changes`; only `UpstreamError` is caught, so listing failure means no create/delete), `create_app(settings=None, services=None)` and its lifespan (webhook reconciliation + Budget Index build, then starts the 6-hourly rebuild task as `app.state.rebuild_task` and cancels it on shutdown before services close; owns services only when it built them). Routes read `app.state.services`. Start with `uvicorn --factory app:create_app`; there is no module-level `app`.
 - `webhooks.py` — pure `plan_webhook_changes(registered_hooks, webhook_url) -> WebhookPlan(create, delete, warnings)`: keeps the first hook at `WEBHOOK_URL` (normalised), deletes app-described duplicates and app-described same-host hooks at other paths, warns on app-described other-host hooks, never touches hooks without an app description. Runs at startup and `/refresh`.
 - `forwarding/` — `Forwarder` (webhook event → Ledger check → fetch from Up → translate → create in YNAB → record outcome; returns Forwarded / Skipped / Failed / Ignored), `ledger.py` (`Ledger` protocol, `SqlLedger` on `ledger_entries`), `translation.py` (pure `translate`; `cleared_status` is the single place cleared is decided; Transfer rule: recognised by `transferAccount`, and when both Up accounts are in YNAB the Originating side (amount <= 0, or the positive "Round Up" half) becomes a YNAB transfer via the other account's `transfer_payee_id` while the Mirror side is skipped; otherwise each half is ordinary), `budget_index.py` (pure `build_budget_index` matching Up to YNAB accounts by exact name and deriving the Category match per payee from all-time YNAB transactions (`since_date=1970-01-01`; transfers, splits, uncategorised and deleted excluded; one category only), immutable `BudgetIndex`, and `BudgetIndexHolder` which rebuilds at startup, on `/refresh`, every 6 hours via `rebuild_periodically` (injected sleep), and lazily (at most once a minute, injected clock) for an unknown Up account; raises `IndexUnavailable` if never built).
 - `clients/` — `UpClient` / `YnabClient` Protocols, each with an `Http*Client` adapter on an injected `httpx2.AsyncClient` opened/closed by `open_services`. Up has list/create/delete webhook (delete answers 204; `_request` returns None for empty bodies). Non-success, transport and parse errors raise `clients.errors.UpstreamError`; a YNAB 409 on create returns `AlreadyImported`. YNAB paths use `/plans/`. Adapters don't log.
@@ -74,9 +78,13 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 
 ## Known gaps (don't assume these work)
 
-- DB model timestamp defaults use `default=datetime.now(UTC)` (evaluated once at import), not a callable.
 - No Alembic installed and no migrations; schema is created via `Base.metadata.create_all` on startup.
 - `/refresh` and `/webhook` have no auth; webhook signature (`X-Up-Authenticity-Signature`) is not verified.
+- Category match uses the Up description, so payees renamed in YNAB go uncategorised.
+- Only `TRANSACTION_CREATED` is acted on; `TRANSACTION_DELETED` / `SETTLED` are ignored, so cancelled holds stay in YNAB.
+- Cleared is always uncleared (`cleared_status`, #111).
+- An Up account with no matching YNAB account is skipped and never retried.
+- Docker `CMD` ignores `PORT`, and `app.json` is a stale Heroku file.
 
 ## Agent skills
 

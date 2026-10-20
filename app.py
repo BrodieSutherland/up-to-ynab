@@ -25,6 +25,8 @@ from webhooks import plan_webhook_changes
 
 logger = structlog.get_logger()
 
+VERSION = "3.0.0"
+
 
 class WebhookResponse(BaseModel):
     """Response model for webhook endpoint."""
@@ -195,7 +197,7 @@ def create_app(
     app = FastAPI(
         title="UP to YNAB Transaction Sync",
         description="Sync transactions from Up Bank to YNAB",
-        version="2.0.0",
+        version=VERSION,
         debug=settings.debug_mode,
         lifespan=_lifespan(settings, services),
     )
@@ -234,7 +236,7 @@ def create_app(
         return {
             "status": "healthy",
             "service": "up-to-ynab",
-            "version": "2.0.0",
+            "version": VERSION,
         }
 
     # Webhook endpoint

@@ -9,11 +9,14 @@ Automatically sync transactions from [Up Bank](https://up.com.au/) to [YNAB](htt
 ## Features
 
 - **Real-time sync** via Up Bank webhooks
-- **Smart categorization** based on historical payee mappings
+- **Category match** from your YNAB history (all-time, rebuilt every 6 hours and on `/refresh`)
+- **Per-account routing** by name
+- **Failed forwards retried** (the webhook answers 503, so Up redelivers)
+- **Webhook registered and kept tidy** automatically
 - **Transfers** booked once, as YNAB transfers
 - **Health monitoring** with built-in endpoints
 - **Docker ready** with production and development configurations
-- **Comprehensive testing** with >90% coverage
+- **Comprehensive testing** with >95% coverage
 - **Security focused** with non-root containers and vulnerability scanning
 
 ## Quick Start
@@ -22,14 +25,15 @@ Automatically sync transactions from [Up Bank](https://up.com.au/) to [YNAB](htt
 
 - Up Bank API token ([get one here](https://developer.up.com.au/))
 - YNAB Personal Access Token ([get one here](https://app.youneedabudget.com/settings/developer))
-- YNAB Budget ID and Account ID
+- YNAB Budget ID
+- YNAB accounts named exactly like your Up accounts
 - Public webhook URL (for receiving Up Bank notifications)
 
 ### Docker Deployment (Recommended)
 
 1. **Clone and setup:**
    ```bash
-   git clone https://github.com/brodie/up-to-ynab.git
+   git clone https://github.com/BrodieSutherland/up-to-ynab.git
    cd up-to-ynab
    cp .env.example .env
    ```
@@ -63,6 +67,22 @@ The application will be available at `http://localhost:5001`.
    ./scripts/run-tests.sh
    ```
 
+## Upgrading to 3.0
+
+1. **Before upgrading**, rename each YNAB account to match the Up account's `displayName` exactly (case and emoji). Transactions for an Up account with no matching YNAB account are skipped and never retried.
+2. Remove `YNAB_ACCOUNT_ID` and `INTERNAL_TRANSFER_STRINGS` from your environment. They are ignored, with a warning at startup, if left in place.
+3. `UP_API_TOKEN`, `YNAB_API_TOKEN` and `YNAB_BUDGET_ID` must be set. Startup fails naming the missing or empty field.
+4. If you override the container command, use `uvicorn --factory app:create_app`.
+5. On startup and on `/refresh`, stale or duplicate webhooks this app created on the same host are deleted. Webhooks this app created on other hosts are only logged, and webhooks it didn't create are never touched.
+6. Optional: drop the unread `payee_category_mappings` and `processed_transactions` tables. With the default `DATABASE_URL` (Docker uses `./data/up_to_ynab.db`):
+   ```bash
+   sqlite3 up_to_ynab.db "DROP TABLE IF EXISTS payee_category_mappings; DROP TABLE IF EXISTS processed_transactions;"
+   ```
+
+Coming from 1.x: set `WEBHOOK_URL=<your-host>/webhook`. The old `/` webhook is removed on first start.
+
+Transactions already forwarded by 2.x are not re-sent. The YNAB `import_id` is now the Up transaction id.
+
 ## Configuration
 
 ### Environment Variables
@@ -72,14 +92,16 @@ The application will be available at `http://localhost:5001`.
 | `UP_API_TOKEN` | ✅ | - | Up Bank API token |
 | `YNAB_API_TOKEN` | ✅ | - | YNAB Personal Access Token |
 | `YNAB_BUDGET_ID` | ✅ | - | YNAB Budget ID |
-| `WEBHOOK_URL` | ❌ | - | Public URL for Up Bank webhooks |
+| `WEBHOOK_URL` | ❌ | - | Public URL ending `/webhook`; if unset, webhook registration is skipped |
+| `UP_BASE_URL` | ❌ | https://api.up.com.au/api/v1/ | Up Bank API base URL |
+| `YNAB_BASE_URL` | ❌ | https://api.youneedabudget.com/v1/ | YNAB API base URL |
 | `PORT` | ❌ | 5001 | Server port |
 | `DEBUG_MODE` | ❌ | false | Enable debug logging |
-| `DATABASE_URL` | ❌ | sqlite:///./up_to_ynab.db | Database connection URL |
+| `DATABASE_URL` | ❌ | sqlite+aiosqlite:///./up_to_ynab.db | Database connection URL |
 
 ### Account routing
 
-Each Up account's transactions go to the YNAB account with exactly the same name (case and emoji included). Closed YNAB accounts are ignored, and an Up account whose name matches no YNAB account, or more than one, is skipped. Rename your YNAB accounts to match before upgrading. `YNAB_ACCOUNT_ID` and `INTERNAL_TRANSFER_STRINGS` are no longer used; a warning is logged at startup if either is still set.
+Each Up account's transactions go to the YNAB account with exactly the same name (case and emoji included). Closed YNAB accounts are ignored, and an Up account whose name matches no YNAB account, or more than one, is skipped. See [Upgrading to 3.0](#upgrading-to-30) if you are moving from an earlier version.
 
 ### Transfers
 
@@ -87,25 +109,24 @@ Transfers between your Up accounts are recognised by Up's `transferAccount` rela
 
 ## API Endpoints
 
-- `GET /health` - Health check endpoint
-- `POST /webhook` - Up Bank webhook receiver
-- `GET /refresh` - Manually refresh category mappings
+- `GET /health` - Health check (`status`, `service`, `version` 3.0.0)
+- `POST /webhook` - Up Bank webhook receiver. Answers 200 with status `forwarded`, `skipped` or `ignored`, and 503 on failure so Up retries. Only `TRANSACTION_CREATED` is acted on.
+- `GET /refresh` - Reconciles webhooks, then rebuilds the Budget Index
 - `GET /docs` - Interactive API documentation
 
 ## Architecture
 
 ```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Up Bank   │───▶│  Webhook    │───▶│    YNAB     │
-│             │    │  Processor  │    │             │
-└─────────────┘    └─────────────┘    └─────────────┘
-                          │
-                          ▼
-                   ┌─────────────┐
-                   │  Category   │
-                   │  Database   │
-                   └─────────────┘
+Up webhook ──▶ /webhook ──▶ Forwarder
+                              1. Ledger check (already handled?)
+                              2. fetch the transaction from Up
+                              3. translate with the Budget Index
+                              4. create in YNAB
+                              5. record the outcome in the Ledger
 ```
+
+- **Budget Index**: YNAB accounts and the Category match, built at startup, every 6 hours, on `/refresh`, and lazily for an unknown Up account.
+- **Ledger**: one row per Up transaction in the SQLite `ledger_entries` table; forwarded and skipped are final, failed is retried on redelivery.
 
 ## Deployment Options
 
@@ -153,26 +174,33 @@ Built-in Docker health checks monitor service availability every 30 seconds.
 
 ### Project Structure
 ```
-refactor/
-├── app.py                 # FastAPI application
-├── models/               # Pydantic data models
-├── services/            # Business logic services
-├── database/           # Database models and connection
-├── utils/             # Configuration and utilities
-├── tests/            # Comprehensive test suite
-└── scripts/         # Deployment and utility scripts
+up-to-ynab/
+├── app.py            # Composition root, VERSION, routes, lifespan
+├── webhooks.py       # Pure webhook reconciliation planner
+├── forwarding/       # Forwarder, translation, Budget Index, Ledger
+├── clients/          # Up and YNAB client Protocols and HTTP adapters
+├── database/         # SQLAlchemy models and connection
+├── models/           # Pydantic models for Up and YNAB payloads
+├── utils/            # config.py (Settings), logging.py
+├── tests/            # Test suite
+│   ├── fakes/        # In-memory fakes for the client and Ledger seams
+│   └── fixtures/up/  # Redacted real Up payloads
+└── scripts/          # Deployment and utility scripts
 ```
 
 ### Testing
 ```bash
 # Run all tests
-pytest
+pytest -q
 
-# Run with coverage
-pytest --cov=. --cov-report=html
+# Run with the coverage gate
+pytest -q --cov --cov-branch
 
 # Run specific test file
-pytest tests/test_transaction_service.py -v
+pytest tests/test_forwarder.py -v
+
+# Or via the script
+./scripts/run-tests.sh
 ```
 
 ### Code Quality
@@ -184,7 +212,7 @@ black .
 isort .
 
 # Lint code
-flake8 .
+flake8 --extend-ignore=E203,W503 .
 ```
 
 ## Contributing
