@@ -10,7 +10,7 @@ Automatically sync transactions from [Up Bank](https://up.com.au/) to [YNAB](htt
 
 - **Real-time sync** via Up Bank webhooks
 - **Smart categorization** based on historical payee mappings
-- **Transfer filtering** to avoid duplicate internal transfers
+- **Transfers** booked once, as YNAB transfers
 - **Health monitoring** with built-in endpoints
 - **Docker ready** with production and development configurations
 - **Comprehensive testing** with >90% coverage
@@ -81,13 +81,9 @@ The application will be available at `http://localhost:5001`.
 
 Each Up account's transactions go to the YNAB account with exactly the same name (case and emoji included). Closed YNAB accounts are ignored, and an Up account whose name matches no YNAB account, or more than one, is skipped. Rename your YNAB accounts to match before upgrading. `YNAB_ACCOUNT_ID` and `INTERNAL_TRANSFER_STRINGS` are no longer used; a warning is logged at startup if either is still set.
 
-### Transfer Filtering
+### Transfers
 
-The following transaction descriptions are automatically filtered out as internal transfers:
-- "Transfer to "
-- "Cover to "
-- "Quick save transfer to "
-- "Forward to "
+Transfers between your Up accounts are recognised by Up's `transferAccount` relationship, not by description text. When both accounts are in YNAB, the half the money left is forwarded as a YNAB transfer and the receiving half is skipped. A Round Up (the Saver's "Round Up" half) is forwarded the same way. If the other account isn't in YNAB, each half is an ordinary transaction (payee is the description, and the Category match applies).
 
 ## API Endpoints
 

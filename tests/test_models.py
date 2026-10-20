@@ -69,21 +69,6 @@ class TestUpModels:
         assert transaction.payee == "Test Merchant"
         assert transaction.amount_milliunits == -12500  # -1250 * 10
 
-    def test_up_transaction_internal_transfer_detection(
-        self, sample_up_transaction_data
-    ):
-        """Test internal transfer detection in UpTransaction."""
-        # Modify transaction to be internal transfer
-        transaction_data = sample_up_transaction_data["data"].copy()
-        transaction_data["attributes"]["description"] = "Transfer to Savings Account"
-
-        transaction = UpTransaction(**transaction_data)
-
-        # Note: This test depends on the settings being available
-        # In a real test, we'd mock the settings
-        # For now, just verify the transaction was created successfully
-        assert transaction.payee == "Transfer to Savings Account"
-
     def test_up_transaction_datetime_parsing(self):
         """Test datetime parsing in transaction attributes."""
         attrs_data = {

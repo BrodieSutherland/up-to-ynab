@@ -1,0 +1,69 @@
+{
+  "data": {
+    "type": "transactions",
+    "id": "synthetic-9",
+    "attributes": {
+      "status": "SETTLED",
+      "rawText": null,
+      "description": "Quick save transfer to 🙂 Saver 1",
+      "message": "",
+      "isCategorizable": false,
+      "holdInfo": null,
+      "roundUp": null,
+      "cashback": null,
+      "amount": {
+        "currencyCode": "AUD",
+        "value": "-25.00",
+        "valueInBaseUnits": -2500
+      },
+      "foreignAmount": null,
+      "cardPurchaseMethod": null,
+      "settledAt": "2026-10-01T09:00:00+10:00",
+      "createdAt": "2026-10-01T09:00:00+10:00",
+      "transactionType": "Transfer",
+      "note": null,
+      "performingCustomer": {
+        "displayName": "Customer 1"
+      },
+      "deepLinkURL": "up://transaction/VHJhbnNhY3Rpb24tMjg3OTk5MjczNQ=="
+    },
+    "relationships": {
+      "account": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-1"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-1"
+        }
+      },
+      "transferAccount": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-2"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-2"
+        }
+      },
+      "category": {
+        "data": null
+      },
+      "parentCategory": {
+        "data": null
+      },
+      "tags": {
+        "data": [],
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/synthetic-9/relationships/tags"
+        }
+      },
+      "attachment": {
+        "data": null
+      }
+    },
+    "links": {
+      "self": "https://api.up.com.au/api/v1/transactions/synthetic-9"
+    }
+  }
+}

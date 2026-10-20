@@ -55,17 +55,32 @@ async def test_already_imported_counts_as_forwarded(
     assert await ledger.is_handled("test-transaction-id")
 
 
-async def test_internal_transfer_is_skipped(
+async def test_mirror_side_is_skipped(
     sample_up_transaction_data, sample_up_webhook_event_data, fake_ynab, holder, ledger
 ):
     data = sample_up_transaction_data["data"]
-    data["attributes"]["description"] = "Transfer to Savings"
+    data["attributes"]["amount"] = {
+        "currencyCode": "AUD",
+        "value": "12.50",
+        "valueInBaseUnits": 1250,
+    }
+    data["relationships"]["transferAccount"] = {
+        "data": {"type": "accounts", "id": "saver-id"}
+    }
+    holder = FakeIndexHolder(
+        BudgetIndex(
+            {
+                "test-account-id": YnabAccountRef("acct-1", "tp-1"),
+                "saver-id": YnabAccountRef("acct-2", "tp-2"),
+            }
+        )
+    )
     up = FakeUpClient(transactions={"test-transaction-id": UpTransaction(**data)})
     forwarder = Forwarder(up, fake_ynab, holder, ledger)
 
     result = await forwarder.handle(UpWebhookEvent(**sample_up_webhook_event_data))
 
-    assert result == Skipped("test-transaction-id", "Internal transfer detected")
+    assert result == Skipped("test-transaction-id", "Mirror side of a Transfer")
     assert fake_ynab.created == []
     assert ledger.entries["test-transaction-id"].status == "skipped"
 

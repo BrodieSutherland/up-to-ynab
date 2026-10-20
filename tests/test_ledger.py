@@ -36,7 +36,7 @@ async def test_forwarded_already_in_ynab_is_handled(ledger):
 
 
 async def test_skipped_is_handled(ledger):
-    await ledger.record(Skipped("tx1", "Internal transfer detected"))
+    await ledger.record(Skipped("tx1", "Mirror side of a Transfer"))
 
     assert await ledger.is_handled("tx1") is True
 

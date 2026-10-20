@@ -8,6 +8,7 @@ class YnabTransactionDetail(BaseModel):
     """YNAB transaction detail for creation."""
 
     account_id: str
+    payee_id: Optional[str] = None
     payee_name: Optional[str] = None
     category_id: Optional[str] = None
     memo: Optional[str] = None

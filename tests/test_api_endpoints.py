@@ -88,16 +88,31 @@ class TestAPIEndpoints:
         self, test_settings, sample_up_transaction_data, sample_up_webhook_event_data
     ):
         data = sample_up_transaction_data["data"]
-        data["attributes"]["description"] = "Transfer to Savings"
+        data["attributes"]["amount"] = {
+            "currencyCode": "AUD",
+            "value": "12.50",
+            "valueInBaseUnits": 1250,
+        }
+        data["relationships"]["transferAccount"] = {
+            "data": {"type": "accounts", "id": "saver-id"}
+        }
+        holder = FakeIndexHolder(
+            BudgetIndex(
+                {
+                    "test-account-id": YnabAccountRef("acct-1", "tp-1"),
+                    "saver-id": YnabAccountRef("acct-2", "tp-2"),
+                }
+            )
+        )
         up = FakeUpClient(transactions={"test-transaction-id": UpTransaction(**data)})
-        app = create_app(test_settings, make_services(up))
+        app = create_app(test_settings, make_services(up, holder=holder))
         with TestClient(app) as c:
             response = c.post("/webhook", json=sample_up_webhook_event_data)
 
         assert response.status_code == 200
         assert response.json() == {
             "status": "skipped",
-            "result": "Internal transfer detected",
+            "result": "Mirror side of a Transfer",
         }
 
     def test_webhook_other_event_is_ignored(self, client, sample_up_webhook_event_data):

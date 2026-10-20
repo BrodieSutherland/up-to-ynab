@@ -165,6 +165,12 @@ class UpTransaction(BaseModel):
         return self.relationships.account["data"]["id"]
 
     @property
+    def transfer_account_id(self) -> str | None:
+        """Id of the other Up account in a Transfer, or None."""
+        data = (self.relationships.transfer_account or {}).get("data")
+        return data["id"] if data else None
+
+    @property
     def amount_milliunits(self) -> int:
         """Get amount in milliunits for YNAB (multiply by 10)."""
         return self.attributes.amount.value_in_base_units * 10

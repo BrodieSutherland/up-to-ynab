@@ -37,7 +37,7 @@ class WebhookResponse(BaseModel):
             "examples": [
                 {"status": "forwarded", "result": "ynab-transaction-id"},
                 {"status": "forwarded", "result": "already in YNAB"},
-                {"status": "skipped", "result": "Internal transfer detected"},
+                {"status": "skipped", "result": "Mirror side of a Transfer"},
                 {"status": "ignored", "result": "not a transaction creation"},
                 {"status": "failed", "result": "POST /transactions -> 500"},
             ]
@@ -272,7 +272,7 @@ def create_app(
         1. Validate the payload structure
         2. Check if it's a TRANSACTION_CREATED event
         3. Fetch the transaction details from Up Bank API
-        4. Filter out internal transfers
+        4. Skip the Mirror side of a Transfer
         5. Look up the payee's Category match in the Budget Index
         6. Create the transaction in YNAB and record the outcome
 
