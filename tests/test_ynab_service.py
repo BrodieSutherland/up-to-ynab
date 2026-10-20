@@ -13,8 +13,12 @@ class TestYnabService:
     @pytest.fixture
     def ynab_service(self, test_settings):
         """Create YnabService instance with test settings."""
-        with patch("services.ynab_service.get_settings", return_value=test_settings):
-            return YnabService()
+        return YnabService(
+            api_token=test_settings.ynab_api_token,
+            base_url=test_settings.ynab_base_url,
+            budget_id=test_settings.ynab_budget_id,
+            account_id=test_settings.ynab_account_id,
+        )
 
     @pytest.fixture
     def sample_up_transaction(self, sample_up_transaction_data):

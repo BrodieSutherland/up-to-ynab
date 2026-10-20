@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from utils.config import Settings, get_settings
+from utils.config import Settings
 
 
 class TestSettings:
@@ -17,6 +17,7 @@ class TestSettings:
             ynab_api_token="test_ynab_token",
             ynab_budget_id="test_budget_id",
             ynab_account_id="test_account_id",
+            _env_file=None,
         )
 
         assert settings.up_api_token == "test_up_token"
@@ -38,6 +39,7 @@ class TestSettings:
             ynab_api_token="test_ynab_token",
             ynab_budget_id="test_budget_id",
             ynab_account_id="test_account_id",
+            _env_file=None,
         )
 
         expected_strings = [
@@ -62,6 +64,7 @@ class TestSettings:
             ynab_api_token="test_ynab_token",
             ynab_budget_id="test_budget_id",
             ynab_account_id="test_account_id",
+            _env_file=None,
             ynab_base_url="https://custom.ynab.api/v1/",
             database_url="postgresql://custom:db@localhost/test",
             internal_transfer_strings=custom_transfer_strings,
@@ -93,6 +96,45 @@ class TestSettings:
             Settings(
                 up_api_token="test", _env_file=None
             )  # Missing other required fields
+
+    def test_settings_rejects_empty_and_whitespace(self):
+        """Empty or whitespace-only required values fail validation."""
+        base = {
+            "up_api_token": "a",
+            "ynab_api_token": "b",
+            "ynab_budget_id": "c",
+            "ynab_account_id": "d",
+        }
+        for field in base:
+            for bad in ("", "   "):
+                with pytest.raises(ValidationError) as exc_info:
+                    Settings(_env_file=None, **{**base, field: bad})
+                assert field in str(exc_info.value)
+
+    def test_settings_strips_whitespace(self):
+        """Surrounding whitespace is removed from required values."""
+        settings = Settings(
+            _env_file=None,
+            up_api_token="  tok  ",
+            ynab_api_token="b",
+            ynab_budget_id="c",
+            ynab_account_id="d",
+        )
+        assert settings.up_api_token == "tok"
+
+    def test_validation_error_does_not_echo_other_tokens(self, monkeypatch):
+        """A missing field's error must not contain another field's token."""
+        monkeypatch.delenv("UP_API_TOKEN", raising=False)
+        with pytest.raises(ValidationError) as exc_info:
+            Settings(
+                _env_file=None,
+                ynab_api_token="secret-ynab-token",
+                ynab_budget_id="c",
+                ynab_account_id="d",
+            )
+        message = str(exc_info.value)
+        assert "up_api_token" in message
+        assert "secret-ynab-token" not in message
 
     @patch.dict(
         os.environ,
@@ -133,17 +175,6 @@ class TestSettings:
             # The lowercase version should be found (case_sensitive=False)
             assert settings.up_api_token == "lowercase_token"
 
-    def test_get_settings_caching(self):
-        """Test that get_settings returns cached instance."""
-        # Clear the cache first
-        get_settings.cache_clear()
-
-        settings1 = get_settings()
-        settings2 = get_settings()
-
-        # Should be the same instance due to lru_cache
-        assert settings1 is settings2
-
     @patch.dict(
         os.environ,
         {
@@ -155,7 +186,7 @@ class TestSettings:
     )
     def test_settings_model_config(self):
         """Test settings model configuration."""
-        settings = Settings()
+        settings = Settings(_env_file=None)
 
         # Test that extra fields are ignored (extra="ignore")
         settings_dict = settings.model_dump()

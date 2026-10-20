@@ -8,7 +8,6 @@ from models.up_models import (
     UpTransactionResponse,
     UpWebhookEvent,
 )
-from utils.config import get_settings
 
 logger = structlog.get_logger()
 
@@ -16,16 +15,10 @@ logger = structlog.get_logger()
 class UpService:
     """Service for interacting with Up Bank API."""
 
-    def __init__(self):
-        self.settings = get_settings()
-        self.base_url = self.settings.up_base_url.rstrip("/")
-
-        # Validate Up API token is present
-        if not self.settings.up_api_token or self.settings.up_api_token.strip() == "":
-            raise ValueError("Up API token is required but not provided")
-
+    def __init__(self, api_token: str, base_url: str):
+        self.base_url = base_url.rstrip("/")
         self.headers = {
-            "Authorization": f"Bearer {self.settings.up_api_token.strip()}",
+            "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json",
         }
 
@@ -152,10 +145,6 @@ class UpService:
 
         logger.info("Webhook not found, creating new one", url=webhook_url)
         return await self.create_webhook(webhook_url)
-
-    def is_internal_transfer(self, transaction: UpTransaction) -> bool:
-        """Check if transaction is an internal transfer."""
-        return transaction.is_internal_transfer
 
     def should_process_transaction(self, webhook_event: UpWebhookEvent) -> bool:
         """Determine if a webhook event should be processed."""

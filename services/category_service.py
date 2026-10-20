@@ -5,7 +5,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.connection import db_manager
+from database.connection import SessionFactory
 from database.models import PayeeCategoryMapping, ProcessedTransaction
 from services.ynab_service import YnabService
 
@@ -15,8 +15,9 @@ logger = structlog.get_logger()
 class CategoryService:
     """Service for managing payee-category mappings and database sync."""
 
-    def __init__(self):
-        self.ynab_service = YnabService()
+    def __init__(self, ynab_service: YnabService, session_factory: SessionFactory):
+        self.ynab_service = ynab_service
+        self._session_factory = session_factory
 
     async def sync_categories_from_ynab(self) -> None:
         """Sync category mappings from YNAB transactions."""
@@ -35,7 +36,7 @@ class CategoryService:
 
             # TODO: Implement actual transaction history analysis
             # For now, we'll just ensure the database structure is ready
-            async with db_manager.get_session() as session:
+            async with self._session_factory() as session:
                 await self._ensure_database_ready(session)
 
             logger.info("Category sync completed successfully")
@@ -49,7 +50,7 @@ class CategoryService:
     async def get_payee_category_mappings(self) -> Dict[str, str]:
         """Get all payee to category ID mappings."""
         try:
-            async with db_manager.get_session() as session:
+            async with self._session_factory() as session:
                 stmt = select(PayeeCategoryMapping).where(
                     PayeeCategoryMapping.is_active.is_(True)
                 )
@@ -79,7 +80,7 @@ class CategoryService:
     ) -> None:
         """Update or create a payee-category mapping."""
         try:
-            async with db_manager.get_session() as session:
+            async with self._session_factory() as session:
                 # Check if mapping exists
                 stmt = select(PayeeCategoryMapping).where(
                     PayeeCategoryMapping.payee_name == payee_name
@@ -139,7 +140,7 @@ class CategoryService:
     ) -> None:
         """Record a processed transaction to avoid duplicates."""
         try:
-            async with db_manager.get_session() as session:
+            async with self._session_factory() as session:
                 processed_tx = ProcessedTransaction(
                     up_transaction_id=up_transaction_id,
                     ynab_transaction_id=ynab_transaction_id,
@@ -171,7 +172,7 @@ class CategoryService:
     async def is_transaction_processed(self, up_transaction_id: str) -> bool:
         """Check if a transaction has already been processed."""
         try:
-            async with db_manager.get_session() as session:
+            async with self._session_factory() as session:
                 stmt = select(ProcessedTransaction).where(
                     ProcessedTransaction.up_transaction_id == up_transaction_id
                 )

@@ -12,7 +12,6 @@ from models.ynab_models import (
     YnabTransactionRequest,
     YnabTransactionResponse,
 )
-from utils.config import get_settings
 from utils.validation import is_validation_error, log_validation_error
 
 logger = structlog.get_logger()
@@ -21,19 +20,12 @@ logger = structlog.get_logger()
 class YnabService:
     """Service for interacting with YNAB API."""
 
-    def __init__(self):
-        self.settings = get_settings()
-        self.base_url = self.settings.ynab_base_url.rstrip("/")
-
-        # Validate YNAB API token is present
-        if (
-            not self.settings.ynab_api_token
-            or self.settings.ynab_api_token.strip() == ""
-        ):
-            raise ValueError("YNAB API token is required but not provided")
-
+    def __init__(self, api_token: str, base_url: str, budget_id: str, account_id: str):
+        self.base_url = base_url.rstrip("/")
+        self.budget_id = budget_id
+        self.account_id = account_id
         self.headers = {
-            "Authorization": f"Bearer {self.settings.ynab_api_token.strip()}",
+            "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json",
         }
 
@@ -43,7 +35,7 @@ class YnabService:
         """Create a YNAB transaction from an Up transaction."""
         # Create YNAB transaction detail
         transaction_detail = YnabTransactionDetail(
-            account_id=self.settings.ynab_account_id,
+            account_id=self.account_id,
             payee_name=up_transaction.payee,
             category_id=category_id,
             memo=up_transaction.attributes.raw_text or up_transaction.payee,
@@ -54,7 +46,7 @@ class YnabService:
 
         transaction_request = YnabTransactionRequest(transaction=transaction_detail)
 
-        url = f"{self.base_url}/budgets/{self.settings.ynab_budget_id}" f"/transactions"
+        url = f"{self.base_url}/budgets/{self.budget_id}" f"/transactions"
 
         try:
             async with httpx.AsyncClient() as client:
@@ -98,7 +90,7 @@ class YnabService:
 
     async def get_budget(self) -> Optional[YnabBudget]:
         """Fetch the YNAB budget with all data."""
-        url = f"{self.base_url}/budgets/{self.settings.ynab_budget_id}"
+        url = f"{self.base_url}/budgets/{self.budget_id}"
 
         try:
             async with httpx.AsyncClient() as client:
@@ -113,14 +105,12 @@ class YnabService:
 
         except Exception as e:
             if is_validation_error(e):
-                log_validation_error(
-                    e, "YNAB budget", budget_id=self.settings.ynab_budget_id
-                )
+                log_validation_error(e, "YNAB budget", budget_id=self.budget_id)
                 return None
             elif isinstance(e, httpx.HTTPStatusError):
                 logger.error(
                     "Failed to fetch YNAB budget",
-                    budget_id=self.settings.ynab_budget_id,
+                    budget_id=self.budget_id,
                     status_code=e.response.status_code,
                     error=str(e),
                 )
@@ -128,7 +118,7 @@ class YnabService:
             else:
                 logger.error(
                     "Unexpected error fetching YNAB budget",
-                    budget_id=self.settings.ynab_budget_id,
+                    budget_id=self.budget_id,
                     error=str(e),
                     exc_info=e,
                 )

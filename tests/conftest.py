@@ -1,26 +1,11 @@
-import os
 from typing import AsyncGenerator
-from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
-from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
-from sqlalchemy.pool import StaticPool
 
-from database.models import Base
+from app import Services, build_services
+from database.connection import DatabaseManager
 from utils.config import Settings
-
-# Set test environment variables before importing app
-# This prevents validation errors when database.connection initializes
-os.environ.setdefault("UP_API_TOKEN", "test_up_token")
-os.environ.setdefault("YNAB_API_TOKEN", "test_ynab_token")
-os.environ.setdefault("YNAB_BUDGET_ID", "test_budget_id")
-os.environ.setdefault("YNAB_ACCOUNT_ID", "test_account_id")
 
 # Test database URL
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
@@ -30,6 +15,7 @@ TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 def test_settings() -> Settings:
     """Create test settings with mock values."""
     return Settings(
+        _env_file=None,
         port=5001,
         debug_mode=True,
         up_api_token="test_up_token",
@@ -50,52 +36,20 @@ def test_settings() -> Settings:
 
 
 @pytest_asyncio.fixture
-async def test_db_engine():
-    """Create a test database engine."""
-    engine = create_async_engine(
-        TEST_DATABASE_URL,
-        poolclass=StaticPool,
-        connect_args={"check_same_thread": False},
-        echo=False,
-    )
-
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
-    yield engine
-
-    await engine.dispose()
-
-
-@pytest_asyncio.fixture
-async def test_db_session(
-    test_db_engine,
-) -> AsyncGenerator[AsyncSession, None]:
-    """Create a test database session."""
-    async_session = async_sessionmaker(
-        test_db_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-    )
-
-    async with async_session() as session:
-        yield session
+async def database(
+    test_settings: Settings,
+) -> AsyncGenerator[DatabaseManager, None]:
+    """In-memory database with tables created."""
+    manager = DatabaseManager(test_settings.database_url)
+    await manager.create_tables()
+    yield manager
+    await manager.close()
 
 
 @pytest.fixture
-def client() -> TestClient:
-    """Create a test client for the FastAPI app."""
-    # Lazy import to ensure environment variables are set first
-    from app import create_app
-
-    app = create_app()
-    return TestClient(app)
-
-
-@pytest.fixture
-def mock_httpx_client():
-    """Create a mock httpx client for testing API calls."""
-    return AsyncMock()
+def services(test_settings: Settings, database: DatabaseManager) -> Services:
+    """Real services wired over the in-memory database."""
+    return build_services(test_settings, database)
 
 
 # Sample test data fixtures

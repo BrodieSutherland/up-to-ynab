@@ -165,18 +165,6 @@ class UpTransaction(BaseModel):
         return self.attributes.amount.value_in_base_units * 10
 
     @property
-    def is_internal_transfer(self) -> bool:
-        """Check if this is an internal transfer."""
-        from utils.config import get_settings
-
-        settings = get_settings()
-
-        return any(
-            transfer_string in self.payee
-            for transfer_string in settings.internal_transfer_strings
-        )
-
-    @property
     def date(self) -> str:
         """Get transaction date in YNAB format (YYYY-MM-DD)."""
         date_to_use = self.attributes.settled_at or self.attributes.created_at

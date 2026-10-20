@@ -13,8 +13,9 @@ class TestUpService:
     @pytest.fixture
     def up_service(self, test_settings):
         """Create UpService instance with test settings."""
-        with patch("services.up_service.get_settings", return_value=test_settings):
-            return UpService()
+        return UpService(
+            api_token=test_settings.up_api_token, base_url=test_settings.up_base_url
+        )
 
     @pytest.mark.asyncio
     async def test_get_transaction_success(

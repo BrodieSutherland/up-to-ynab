@@ -19,10 +19,10 @@ pytest -q                          # full suite, ~1s, no network needed
 pytest tests/test_transaction_service.py -v
 pytest -q --cov --cov-branch   # coverage gate
 black . && isort . && flake8 --extend-ignore=E203,W503 .   # must pass: CI runs --check
-python -m uvicorn app:app --port 5001 --reload             # needs .env (see .env.example)
+python -m uvicorn --factory app:create_app --port 5001 --reload             # needs .env (see .env.example)
 ```
 
-CI (`.github/workflows/ci.yml`) runs on pushes to `main`/`develop`, `v*` tags, and PRs into `main` and `develop`. It runs tests (Python 3.11 and 3.14) with an app-only branch coverage gate (`[tool.coverage]` in `pyproject.toml`; `fail_under` is currently 83, ratcheting to 90; new top-level packages must be added to coverage `source`) and black/isort/flake8 checks, a Docker build + `/health` smoke test, and Trivy. CodeQL runs from `.github/workflows/codeql.yml` (advanced setup, so it also covers Dependabot PRs; repo-level "default setup" must stay disabled or the uploads conflict). The multi-arch image (`docker-publish.yml`, a reusable workflow called as the `image` job) is built on PRs without pushing, and is published to Docker Hub only from `main` / `v*` tags after all checks pass. The metadata step uses `flavor: latest=false`, so only `main` moves `latest`. `CI OK` is the single required status check. Dependabot patch PRs auto-merge via a GitHub App token (secrets `AUTOMERGE_APP_ID`, `AUTOMERGE_APP_PRIVATE_KEY`) once `CI OK` passes.
+CI (`.github/workflows/ci.yml`) runs on pushes to `main`/`develop`, `v*` tags, and PRs into `main` and `develop`. It runs tests (Python 3.11 and 3.14) with an app-only branch coverage gate (`[tool.coverage]` in `pyproject.toml`; `fail_under` is currently 89, ratcheting to 90; new top-level packages must be added to coverage `source`) and black/isort/flake8 checks, a Docker build + `/health` smoke test, and Trivy. CodeQL runs from `.github/workflows/codeql.yml` (advanced setup, so it also covers Dependabot PRs; repo-level "default setup" must stay disabled or the uploads conflict). The multi-arch image (`docker-publish.yml`, a reusable workflow called as the `image` job) is built on PRs without pushing, and is published to Docker Hub only from `main` / `v*` tags after all checks pass. The metadata step uses `flavor: latest=false`, so only `main` moves `latest`. `CI OK` is the single required status check. Dependabot patch PRs auto-merge via a GitHub App token (secrets `AUTOMERGE_APP_ID`, `AUTOMERGE_APP_PRIVATE_KEY`) once `CI OK` passes.
 
 ## Code navigation & editing (Serena MCP)
 
@@ -32,28 +32,28 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 - **Reading code:** use `get_symbols_overview` on a file first, then `find_symbol` with `include_body=True` for just the methods you need (e.g. `TransactionService/process_transaction`). The service files are about 200 lines each, so reading a whole file is fine if you need all of it. Don't re-read it symbolically afterwards.
 - **Before changing a signature:** run `find_referencing_symbols`. High-traffic symbols:
   - `CategoryService/record_processed_transaction` (called in 5 places across `transaction_service.py`)
-  - `get_settings` (imported by every service, filter and `database/connection.py`)
+  - `build_services` (the only place services are built; every constructor takes plain values or other services)
   - `UpTransaction` properties (`payee`, `amount_milliunits`, `date`)
-- **Renames/deletes:** use `rename_symbol` and `safe_delete_symbol`. **Caveat:** tests patch by string path (`patch("services.up_service.get_settings")`, `patch("database.connection.db_manager.get_session")`, `patch("app.TransactionService")`). The language server does not update these strings. After any rename or move, grep `tests/` for the old dotted path and run `pytest`.
+- **Renames/deletes:** use `rename_symbol` and `safe_delete_symbol`. **Caveat:** the only string patches left in `tests/` are `patch("httpx2.AsyncClient")` (until ticket 04 injects the HTTP client); the language server does not update those strings. After any rename or move, grep `tests/` for the old dotted path and run `pytest`.
 - **Edits:** use `replace_symbol_body` for whole methods. Use `replace_content` for a few lines inside a method. Use `replace_in_files` (with `dry_run` first) for the same change across files.
 - **Memories:** if you change something a Serena memory describes (layout, commands, conventions), update that memory with `edit_memory` too. This file and the memories should not contradict each other.
 
 ## Layout
 
-- `app.py` — FastAPI app factory, lifespan (creates tables, pings/creates Up webhook, refreshes categories), routes `/health`, `/webhook`, `/refresh`.
+- `app.py` — composition root: `Services` dataclass, `build_services(settings, database)`, `open_services(settings)` (creates the DB, builds real services, closes the DB on exit), `create_app(settings=None, services=None)` and its lifespan (webhook ping + category refresh; owns services only when it built them). Routes read `app.state.services`. Start with `uvicorn --factory app:create_app`; there is no module-level `app`.
 - `services/transaction_service.py` — orchestrator: webhook event → dedupe check → fetch from Up → filter → category lookup → create in YNAB → record result.
 - `services/up_service.py`, `services/ynab_service.py` — thin `httpx2.AsyncClient` wrappers (imported as `httpx`). Errors are logged and swallowed; methods return `None`/`[]`/`False` instead of raising.
 - `services/category_service.py` — DB access for payee→category mappings and processed-transaction log.
-- `database/` — SQLAlchemy 2.0 async models + global `db_manager` singleton (created at import time).
+- `database/` — SQLAlchemy 2.0 async models + `DatabaseManager(database_url, echo)` (no global instance) and the `SessionFactory` type that `CategoryService` receives.
 - `models/` — Pydantic v2 models for Up and YNAB API payloads.
-- `utils/config.py` — `pydantic-settings` `Settings`, cached via `get_settings()` (`lru_cache`).
-- `utils/filters.py` — internal-transfer filtering by payee substring.
+- `utils/config.py` — `pydantic-settings` `Settings`, built once in `create_app` (no cache, no getter). Required token/ID fields reject missing, empty and whitespace values; `hide_input_in_errors=True` keeps secrets out of validation errors.
+- `utils/filters.py` — internal-transfer filtering by payee substring; `TransactionFilter(internal_transfer_strings)` takes the strings, not settings.
 - `utils/logging.py` — structlog setup (JSON in prod, console in debug) and `HealthCheckFilter`, which hides `/health` access logs when not in debug mode.
 
 ## Conventions
 
 - Imports are absolute from repo root (`from services.up_service import UpService`). No package install; run from repo root.
-- Services instantiate their own dependencies in `__init__` and call `get_settings()` there. Missing API tokens raise `ValueError` in the constructor; `app.py` catches that and returns an "error" status rather than a 500.
+- Constructor injection: services take plain values (tokens, URLs, IDs) or other services; nothing but `build_services`/`create_app` reads `Settings`. A missing or empty required token fails startup with a `ValidationError` naming the field (never the value).
 - Logging is `structlog` with keyword context: `logger.info("Message", transaction_id=..., payee=...)`. Never log tokens or headers.
 - Money is YNAB milliunits (int). Use `UpTransaction.amount_milliunits`, not the Up decimal string.
 - YNAB `import_id` max is 36 chars — see `YnabService.create_import_id`.
@@ -62,8 +62,8 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 ## Testing
 
 - Redacted real Up payloads live in `tests/fixtures/up/`.
-- `tests/conftest.py` sets fake env tokens *before* importing app code, because `db_manager` and settings load at import time. Keep that ordering.
-- Mock HTTP with `patch("httpx2.AsyncClient")`, DB with `patch("database.connection.db_manager.get_session")`, and settings by patching `get_settings` **in the module that imports it** (e.g. `services.up_service.get_settings`), since `lru_cache` otherwise returns real settings.
+- `tests/conftest.py` no longer touches env vars. `test_settings` is `Settings(..., _env_file=None)` over in-memory SQLite; the async `database` fixture and `services` fixture (`build_services(test_settings, database)`) give real services. Build any other `Settings` in tests with `_env_file=None`.
+- Mock HTTP with `patch("httpx2.AsyncClient")` (until ticket 04). API tests use `with TestClient(create_app(settings, Services(up=fake, transactions=fake)))` with local fakes. DB tests use the real in-memory `database`; seed and assert in fresh `async with database.get_session()` blocks (a shared session goes stale). Don't patch `app.*`, settings, or the database manager.
 - `asyncio_mode = "auto"` — async tests need no decorator.
 
 ## Dependencies

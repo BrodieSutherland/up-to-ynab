@@ -1,8 +1,9 @@
-from functools import lru_cache
-from typing import Optional
+from typing import Annotated, Optional
 
-from pydantic import Field
+from pydantic import Field, StringConstraints
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+RequiredStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class Settings(BaseSettings):
@@ -13,6 +14,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        hide_input_in_errors=True,
     )
 
     # Server configuration
@@ -20,7 +22,7 @@ class Settings(BaseSettings):
     debug_mode: bool = Field(default=False, description="Enable debug mode")
 
     # Up Bank API configuration
-    up_api_token: str = Field(..., description="Up Bank API token")
+    up_api_token: RequiredStr = Field(..., description="Up Bank API token")
     up_base_url: str = Field(
         default="https://api.up.com.au/api/v1/",
         description="Up Bank API base URL",
@@ -30,9 +32,9 @@ class Settings(BaseSettings):
     )
 
     # YNAB API configuration
-    ynab_api_token: str = Field(..., description="YNAB API token")
-    ynab_budget_id: str = Field(..., description="YNAB budget ID")
-    ynab_account_id: str = Field(..., description="YNAB account ID")
+    ynab_api_token: RequiredStr = Field(..., description="YNAB API token")
+    ynab_budget_id: RequiredStr = Field(..., description="YNAB budget ID")
+    ynab_account_id: RequiredStr = Field(..., description="YNAB account ID")
     ynab_base_url: str = Field(
         default="https://api.youneedabudget.com/v1/",
         description="YNAB API base URL",
@@ -54,9 +56,3 @@ class Settings(BaseSettings):
         ],
         description="Strings that identify internal transfers to exclude",
     )
-
-
-@lru_cache()
-def get_settings() -> Settings:
-    """Get cached application settings."""
-    return Settings()

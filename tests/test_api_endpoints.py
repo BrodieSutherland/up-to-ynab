@@ -1,22 +1,79 @@
-from unittest.mock import AsyncMock, patch
-
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
-from app import create_app
+from app import Services, create_app, open_services
+
+
+class FakeUp:
+    """In-memory stand-in for UpService at the app seam."""
+
+    def __init__(self, webhook_ok=True, error=None):
+        self.webhook_ok = webhook_ok
+        self.error = error
+        self.pinged_urls = []
+
+    async def ping_webhook(self, url):
+        self.pinged_urls.append(url)
+        if self.error:
+            raise self.error
+        return self.webhook_ok
+
+
+class FakeTransactions:
+    """In-memory stand-in for TransactionService at the app seam."""
+
+    def __init__(
+        self,
+        result="Transaction processed successfully",
+        error=None,
+        refresh_result="Data refreshed successfully",
+        refresh_error=None,
+    ):
+        self.result = result
+        self.error = error
+        self.refresh_result = refresh_result
+        self.refresh_error = refresh_error
+        self.events = []
+        self.refresh_count = 0
+
+    async def process_webhook_event(self, event):
+        self.events.append(event)
+        if self.error:
+            raise self.error
+        return self.result
+
+    async def refresh_data(self):
+        self.refresh_count += 1
+        if self.refresh_error:
+            raise self.refresh_error
+        return self.refresh_result
+
+
+@pytest.fixture
+def fake_up():
+    return FakeUp()
+
+
+@pytest.fixture
+def fake_transactions():
+    return FakeTransactions()
+
+
+@pytest.fixture
+def client(test_settings, fake_up, fake_transactions):
+    app = create_app(
+        settings=test_settings,
+        services=Services(up=fake_up, transactions=fake_transactions),
+    )
+    with TestClient(app) as c:
+        yield c
 
 
 class TestAPIEndpoints:
     """Test cases for API endpoints."""
 
-    @pytest.fixture
-    def client(self):
-        """Create test client with mocked dependencies."""
-        app = create_app()
-        return TestClient(app)
-
     def test_health_check(self, client):
-        """Test health check endpoint."""
         response = client.get("/health")
 
         assert response.status_code == 200
@@ -25,69 +82,38 @@ class TestAPIEndpoints:
         assert data["service"] == "up-to-ynab"
         assert data["version"] == "2.0.0"
 
-    @patch("app.TransactionService")
     def test_webhook_endpoint_success(
-        self,
-        mock_transaction_service_class,
-        client,
-        sample_up_webhook_event_data,
+        self, client, fake_transactions, sample_up_webhook_event_data
     ):
-        """Test webhook endpoint with successful processing."""
-        # Setup mock
-        mock_service = AsyncMock()
-        mock_service.process_webhook_event.return_value = (
-            "Transaction processed successfully"
-        )
-        mock_transaction_service_class.return_value = mock_service
-
         response = client.post("/webhook", json=sample_up_webhook_event_data)
 
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "processed"
         assert data["result"] == "Transaction processed successfully"
+        assert [e.data.transaction_id for e in fake_transactions.events] == [
+            "test-transaction-id"
+        ]
 
-    @patch("app.TransactionService")
-    def test_webhook_endpoint_invalid_payload(
-        self, mock_transaction_service_class, client
-    ):
-        """Test webhook endpoint with invalid payload."""
-        invalid_payload = {"invalid": "data"}
-
-        response = client.post("/webhook", json=invalid_payload)
+    def test_webhook_endpoint_invalid_payload(self, client):
+        response = client.post("/webhook", json={"invalid": "data"})
 
         # FastAPI returns 422 for validation errors (Pydantic model validation)
         assert response.status_code == 422
-        data = response.json()
-        assert "detail" in data
+        assert "detail" in response.json()
 
-    @patch("app.TransactionService")
     def test_webhook_endpoint_processing_error(
-        self,
-        mock_transaction_service_class,
-        client,
-        sample_up_webhook_event_data,
+        self, test_settings, fake_up, sample_up_webhook_event_data
     ):
-        """Test webhook endpoint when processing raises an exception."""
-        # Setup mock to raise exception
-        mock_service = AsyncMock()
-        mock_service.process_webhook_event.side_effect = Exception("Processing failed")
-        mock_transaction_service_class.return_value = mock_service
-
-        response = client.post("/webhook", json=sample_up_webhook_event_data)
+        failing = FakeTransactions(error=Exception("Processing failed"))
+        app = create_app(test_settings, Services(up=fake_up, transactions=failing))
+        with TestClient(app) as c:
+            response = c.post("/webhook", json=sample_up_webhook_event_data)
 
         assert response.status_code == 400
-        data = response.json()
-        assert "Invalid webhook payload" in data["detail"]
+        assert "Invalid webhook payload" in response.json()["detail"]
 
-    @patch("services.transaction_service.TransactionService")
-    def test_refresh_endpoint_success(self, mock_transaction_service_class, client):
-        """Test refresh endpoint with successful data refresh."""
-        # Setup mock
-        mock_service = AsyncMock()
-        mock_service.refresh_data.return_value = "Data refreshed successfully"
-        mock_transaction_service_class.return_value = mock_service
-
+    def test_refresh_endpoint_success(self, client):
         response = client.get("/refresh")
 
         assert response.status_code == 200
@@ -95,28 +121,21 @@ class TestAPIEndpoints:
         assert data["status"] == "success"
         assert data["message"] == "Data refreshed successfully"
 
-    @patch("app.TransactionService")
-    def test_refresh_endpoint_failure(self, mock_transaction_service_class, client):
-        """Test refresh endpoint when refresh fails."""
-        # Setup mock to raise exception
-        mock_service = AsyncMock()
-        mock_service.refresh_data.side_effect = Exception("Refresh failed")
-        mock_transaction_service_class.return_value = mock_service
-
-        response = client.get("/refresh")
+    def test_refresh_endpoint_failure(self, test_settings, fake_up):
+        failing = FakeTransactions(refresh_error=Exception("Refresh failed"))
+        app = create_app(test_settings, Services(up=fake_up, transactions=failing))
+        with TestClient(app) as c:
+            response = c.get("/refresh")
 
         assert response.status_code == 500
-        data = response.json()
-        assert "Failed to refresh data" in data["detail"]
+        assert "Failed to refresh data" in response.json()["detail"]
 
     def test_webhook_endpoint_missing_json(self, client):
-        """Test webhook endpoint with missing JSON body."""
         response = client.post("/webhook")
 
-        assert response.status_code == 422  # Unprocessable Entity
+        assert response.status_code == 422
 
     def test_nonexistent_endpoint(self, client):
-        """Test accessing non-existent endpoint."""
         response = client.get("/nonexistent")
 
         assert response.status_code == 404
@@ -125,93 +144,92 @@ class TestAPIEndpoints:
 class TestAPIMiddleware:
     """Test API middleware and error handling."""
 
-    @pytest.fixture
-    def client(self):
-        """Create test client."""
-        app = create_app()
-        return TestClient(app)
-
     def test_cors_headers(self, client):
-        """Test CORS headers are present in debug mode."""
-        with patch("utils.config.get_settings") as mock_settings:
-            # Mock debug mode to enable CORS
-            mock_settings.return_value.debug_mode = True
+        response = client.options("/health")
 
-            response = client.options("/health")
+        # TestClient doesn't handle CORS preflight requests the same way
+        # but we can verify the middleware is configured
+        assert response.status_code in [200, 405]
 
-            # TestClient doesn't handle CORS preflight requests the same way
-            # but we can verify the middleware is configured
-            assert response.status_code in [
-                200,
-                405,
-            ]  # OPTIONS might not be allowed
-
-    @patch("app.logger")
-    def test_global_exception_handler(self, mock_logger, client):
-        """Test global exception handler."""
-        # This is harder to test with TestClient as it doesn't trigger
-        # the same error paths
-        # In a real scenario, we'd need to create an endpoint that raises an
-        # exception
-
-        # For now, just verify the health endpoint works (basic functionality)
+    def test_global_exception_handler(self, client):
+        # Basic functionality check; the handler needs a raising endpoint
         response = client.get("/health")
         assert response.status_code == 200
+
+
+def _client(settings, up, transactions):
+    app = create_app(settings, Services(up=up, transactions=transactions))
+    return TestClient(app)
 
 
 class TestAPIStartupShutdown:
-    """Test application startup and shutdown behavior."""
+    """Test application startup behaviour."""
 
-    @patch("app.db_manager.create_tables")
-    @patch("app.UpService")
-    @patch("app.TransactionService")
-    def test_startup_sequence(
-        self, mock_transaction_service, mock_up_service, mock_create_tables
+    def test_startup_pings_webhook_and_refreshes(
+        self, test_settings, fake_up, fake_transactions
     ):
-        """Test application startup sequence."""
-        # Setup mocks to prevent real API calls
-        mock_up_service_instance = AsyncMock()
-        mock_up_service.return_value = mock_up_service_instance
-        mock_up_service_instance.ping_webhook.return_value = True
+        with _client(test_settings, fake_up, fake_transactions) as c:
+            assert c.get("/health").status_code == 200
 
-        mock_transaction_service_instance = AsyncMock()
-        mock_transaction_service.return_value = mock_transaction_service_instance
-        mock_transaction_service_instance.refresh_data.return_value = "Success"
+        assert fake_up.pinged_urls == ["https://test.example.com/webhook"]
+        assert fake_transactions.refresh_count == 1
 
-        mock_create_tables.return_value = None
+    def test_startup_skips_ping_without_webhook_url(
+        self, test_settings, fake_up, fake_transactions
+    ):
+        settings = test_settings.model_copy(update={"webhook_url": None})
+        with _client(settings, fake_up, fake_transactions) as c:
+            assert c.get("/health").status_code == 200
 
-        # Create app to trigger startup
-        with patch("app.get_settings") as mock_settings:
-            mock_settings.return_value.webhook_url = "https://test.example.com/webhook"
+        assert fake_up.pinged_urls == []
+        assert fake_transactions.refresh_count == 1
 
-            app = create_app()
-            client = TestClient(app)
+    def test_startup_survives_failed_webhook_setup(
+        self, test_settings, fake_transactions
+    ):
+        with _client(test_settings, FakeUp(webhook_ok=False), fake_transactions) as c:
+            assert c.get("/health").status_code == 200
 
-            # Make a request to ensure app is started and working
-            response = client.get("/health")
-            assert response.status_code == 200
+    def test_startup_survives_unexpected_error(self, test_settings, fake_transactions):
+        up = FakeUp(error=RuntimeError("boom"))
+        with _client(test_settings, up, fake_transactions) as c:
+            assert c.get("/health").status_code == 200
 
-            # Verify app was created successfully with mocked dependencies
-            # Note: TestClient may not trigger lifespan the same way as real
-            # server, but we've verified the app can handle requests
-            assert app is not None
+        assert fake_transactions.refresh_count == 0
 
-    @patch("database.connection.db_manager.create_tables")
-    @patch("database.connection.db_manager.close")
-    def test_shutdown_sequence(self, mock_close, mock_create_tables):
-        """Test application shutdown sequence."""
-        mock_create_tables.return_value = None
-        mock_close.return_value = None
+    def test_startup_survives_refresh_failure(self, test_settings, fake_up):
+        failing = FakeTransactions(refresh_error=RuntimeError("boom"))
+        with _client(test_settings, fake_up, failing) as c:
+            assert c.get("/health").status_code == 200
 
-        app = create_app()
-        client = TestClient(app)
+    async def test_open_services_builds_real_services(self, test_settings):
+        async with open_services(test_settings) as built:
+            category = built.transactions.category_service
+            await category.record_processed_transaction(
+                up_transaction_id="abc",
+                ynab_transaction_id="y1",
+                payee_name="Shop",
+                amount=-1000,
+                transaction_date="2024-01-01",
+            )
+            assert await category.is_transaction_processed("abc") is True
 
-        # Make a request and close
-        response = client.get("/health")
-        assert response.status_code == 200
+    def test_missing_token_fails_startup(self, monkeypatch, tmp_path):
+        monkeypatch.chdir(tmp_path)
+        for name in (
+            "UP_API_TOKEN",
+            "YNAB_API_TOKEN",
+            "YNAB_BUDGET_ID",
+            "YNAB_ACCOUNT_ID",
+        ):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("YNAB_API_TOKEN", "secret-ynab-token")
+        monkeypatch.setenv("YNAB_BUDGET_ID", "budget")
+        monkeypatch.setenv("YNAB_ACCOUNT_ID", "account")
 
-        # Close the test client (triggers shutdown)
-        client.close()
+        with pytest.raises(ValidationError) as exc_info:
+            create_app()
 
-        # Note: TestClient might not perfectly simulate the shutdown sequence
-        # In real deployment, the lifespan context manager handles this
+        message = str(exc_info.value)
+        assert "up_api_token" in message
+        assert "secret-ynab-token" not in message

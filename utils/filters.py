@@ -1,18 +1,17 @@
 from models.up_models import UpTransaction
-from utils.config import get_settings
 
 
 class TransactionFilter:
     """Filter transactions based on various criteria."""
 
-    def __init__(self):
-        self.settings = get_settings()
+    def __init__(self, internal_transfer_strings: list[str]):
+        self.internal_transfer_strings = internal_transfer_strings
 
     def is_internal_transfer(self, transaction: UpTransaction) -> bool:
         """Check if transaction matches internal transfer patterns."""
         payee = transaction.payee
 
-        for transfer_string in self.settings.internal_transfer_strings:
+        for transfer_string in self.internal_transfer_strings:
             if transfer_string in payee:
                 return True
 

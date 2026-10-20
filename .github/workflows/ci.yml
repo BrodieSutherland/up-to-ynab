@@ -55,12 +55,6 @@ jobs:
       working-directory: .
       run: |
         pytest tests/ -v --cov --cov-report=term-missing
-      env:
-        # Mock environment variables for tests
-        UP_API_TOKEN: test_token
-        YNAB_API_TOKEN: test_token
-        YNAB_BUDGET_ID: test_budget
-        YNAB_ACCOUNT_ID: test_account
 
   docker-build:
     runs-on: ubuntu-latest

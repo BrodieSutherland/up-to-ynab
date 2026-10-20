@@ -4,16 +4,15 @@ import pytest
 
 from models.up_models import UpTransaction, UpWebhookEvent
 from models.ynab_models import YnabTransactionResponse
-from services.transaction_service import TransactionService
 
 
 class TestTransactionService:
     """Test cases for Transaction service."""
 
     @pytest.fixture
-    def transaction_service(self):
-        """Create TransactionService instance."""
-        return TransactionService()
+    def transaction_service(self, services):
+        """Real TransactionService over the in-memory database."""
+        return services.transactions
 
     @pytest.fixture
     def sample_up_transaction(self, sample_up_transaction_data):

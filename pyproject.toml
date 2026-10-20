@@ -49,5 +49,5 @@ source = ["app", "database", "models", "services", "utils"]
 omit = ["tests/*", ".scratch/*", ".venv/*", "venv/*"]
 
 [tool.coverage.report]
-fail_under = 83
+fail_under = 89
 show_missing = true

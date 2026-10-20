@@ -1,5 +1,3 @@
-from unittest.mock import patch
-
 import pytest
 
 from models.up_models import UpTransaction
@@ -12,8 +10,7 @@ class TestTransactionFilter:
     @pytest.fixture
     def transaction_filter(self, test_settings):
         """Create TransactionFilter instance with test settings."""
-        with patch("utils.filters.get_settings", return_value=test_settings):
-            return TransactionFilter()
+        return TransactionFilter(test_settings.internal_transfer_strings)
 
     @pytest.fixture
     def sample_up_transaction(self, sample_up_transaction_data):

@@ -1,5 +1,6 @@
-from contextlib import asynccontextmanager
-from typing import Any, Dict
+from contextlib import AsyncExitStack, asynccontextmanager
+from dataclasses import dataclass
+from typing import Any, AsyncIterator, Dict
 
 import structlog
 from fastapi import FastAPI, HTTPException, Request, status
@@ -7,11 +8,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from database.connection import db_manager
+from database.connection import DatabaseManager
 from models.up_models import UpWebhookEvent
+from services.category_service import CategoryService
 from services.transaction_service import TransactionService
 from services.up_service import UpService
-from utils.config import get_settings
+from services.ynab_service import YnabService
+from utils.config import Settings
+from utils.filters import TransactionFilter
 from utils.logging import setup_logging
 from utils.validation import (
     format_validation_errors,
@@ -48,23 +52,45 @@ class WebhookResponse(BaseModel):
     }
 
 
+@dataclass(frozen=True)
+class Services:
+    """The service objects the routes and startup tasks use."""
+
+    up: UpService
+    transactions: TransactionService
+
+
+def build_services(settings: Settings, database: DatabaseManager) -> Services:
+    """Wire every service from settings; the only place services are built."""
+    up = UpService(api_token=settings.up_api_token, base_url=settings.up_base_url)
+    ynab = YnabService(
+        api_token=settings.ynab_api_token,
+        base_url=settings.ynab_base_url,
+        budget_id=settings.ynab_budget_id,
+        account_id=settings.ynab_account_id,
+    )
+    category = CategoryService(ynab, database.get_session)
+    transaction_filter = TransactionFilter(settings.internal_transfer_strings)
+    transactions = TransactionService(up, ynab, category, transaction_filter)
+    return Services(up=up, transactions=transactions)
+
+
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan context manager for startup/shutdown tasks."""
-    logger.info("Starting UP to YNAB application")
-
-    # Initialize database
-    await db_manager.create_tables()
-
-    # Initialize services with proper error handling
+async def open_services(settings: Settings) -> AsyncIterator[Services]:
+    """Create the database, build real services, and close resources on exit."""
+    database = DatabaseManager(settings.database_url, echo=settings.debug_mode)
     try:
-        up_service = UpService()
-        transaction_service = TransactionService()
+        await database.create_tables()
+        yield build_services(settings, database)
+    finally:
+        await database.close()
 
-        # Setup webhook if URL is provided
-        settings = get_settings()
+
+async def _run_startup_tasks(settings: Settings, services: Services) -> None:
+    """Set up the Up webhook and warm the category data."""
+    try:
         if settings.webhook_url:
-            webhook_exists = await up_service.ping_webhook(settings.webhook_url)
+            webhook_exists = await services.up.ping_webhook(settings.webhook_url)
             if webhook_exists:
                 logger.info("Webhook is ready", url=settings.webhook_url)
             else:
@@ -72,18 +98,11 @@ async def lifespan(app: FastAPI):
         else:
             logger.info("No webhook URL configured - webhook setup skipped")
 
-        # Refresh category data
         try:
-            await transaction_service.refresh_data()
+            await services.transactions.refresh_data()
         except Exception as e:
             logger.error("Failed to refresh category data on startup", error=str(e))
 
-    except ValueError as e:
-        logger.error(
-            "Service initialization failed - check your API tokens",
-            error=str(e),
-        )
-        # Don't fail startup completely, but services won't work
     except Exception as e:
         logger.error(
             "Unexpected error during service initialization",
@@ -91,17 +110,37 @@ async def lifespan(app: FastAPI):
             exc_info=e,
         )
 
-    logger.info("UP to YNAB application started successfully")
 
-    yield
+def _lifespan(settings: Settings, services: Services | None):
+    """Build the lifespan; real services are owned here, injected ones are not."""
 
-    logger.info("Shutting down UP to YNAB application")
-    await db_manager.close()
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        logger.info("Starting UP to YNAB application")
+        async with AsyncExitStack() as stack:
+            if services is None:
+                app.state.services = await stack.enter_async_context(
+                    open_services(settings)
+                )
+            else:
+                app.state.services = services
+            await _run_startup_tasks(settings, app.state.services)
+            logger.info("UP to YNAB application started successfully")
+            yield
+            logger.info("Shutting down UP to YNAB application")
+
+    return lifespan
 
 
-def create_app() -> FastAPI:
-    """Create and configure the FastAPI application."""
-    settings = get_settings()
+def create_app(
+    settings: Settings | None = None, services: Services | None = None
+) -> FastAPI:
+    """Create the FastAPI application.
+
+    Settings default to the environment (a missing token raises a
+    ValidationError). Services default to real ones built in the lifespan.
+    """
+    settings = settings if settings is not None else Settings()
     setup_logging(settings.debug_mode)
 
     app = FastAPI(
@@ -109,7 +148,7 @@ def create_app() -> FastAPI:
         description="Sync transactions from Up Bank to YNAB",
         version="2.0.0",
         debug=settings.debug_mode,
-        lifespan=lifespan,
+        lifespan=_lifespan(settings, services),
     )
 
     # Add CORS middleware
@@ -192,21 +231,11 @@ def create_app() -> FastAPI:
 
             logger.info("Received event", event_type=webhook_event.data.event_type)
 
-            # Process the webhook event
-            try:
-                transaction_service = TransactionService()
-                result = await transaction_service.process_webhook_event(webhook_event)
-                logger.info("Event processed", result=result)
-                return WebhookResponse(status="processed", result=result)
-            except ValueError as e:
-                logger.error(
-                    ("Service initialization failed during " "webhook processing"),
-                    error=str(e),
-                )
-                return WebhookResponse(
-                    status="error",
-                    result=("Service configuration error - check API tokens"),
-                )
+            result = await app.state.services.transactions.process_webhook_event(
+                webhook_event
+            )
+            logger.info("Event processed", result=result)
+            return WebhookResponse(status="processed", result=result)
 
         except Exception as exc:
             if is_validation_error(exc):
@@ -230,19 +259,8 @@ def create_app() -> FastAPI:
         try:
             logger.info("Manual refresh requested")
 
-            try:
-                transaction_service = TransactionService()
-                result = await transaction_service.refresh_data()
-                return {"status": "success", "message": result}
-            except ValueError as e:
-                logger.error(
-                    "Service initialization failed during refresh",
-                    error=str(e),
-                )
-                return {
-                    "status": "error",
-                    "message": ("Service configuration error - check API tokens"),
-                }
+            result = await app.state.services.transactions.refresh_data()
+            return {"status": "success", "message": result}
 
         except Exception as exc:
             logger.error("Failed to refresh data", exc_info=exc)
@@ -254,16 +272,13 @@ def create_app() -> FastAPI:
     return app
 
 
-# Create the app instance
-app = create_app()
-
-
 if __name__ == "__main__":
     import uvicorn
 
-    settings = get_settings()
+    settings = Settings()
     uvicorn.run(
-        "app:app",
+        "app:create_app",
+        factory=True,
         host="0.0.0.0",
         port=settings.port,
         reload=settings.debug_mode,

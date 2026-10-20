@@ -127,8 +127,10 @@ docker-compose -f docker-compose.dev.yml up -d
 pip install -r requirements.txt
 
 # Run application
-python -m uvicorn app:app --host 0.0.0.0 --port 5001
+python -m uvicorn --factory app:create_app --host 0.0.0.0 --port 5001
 ```
+
+The app refuses to start when a required token or ID (`UP_API_TOKEN`, `YNAB_API_TOKEN`, `YNAB_BUDGET_ID`, `YNAB_ACCOUNT_ID`) is missing or empty; the error names the field.
 
 For development (tests and linting), install `requirements-dev.txt` instead:
 ```bash

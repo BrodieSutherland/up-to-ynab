@@ -12,11 +12,17 @@ logger = structlog.get_logger()
 class TransactionService:
     """Main service for processing transactions from Up to YNAB."""
 
-    def __init__(self):
-        self.up_service = UpService()
-        self.ynab_service = YnabService()
-        self.category_service = CategoryService()
-        self.transaction_filter = TransactionFilter()
+    def __init__(
+        self,
+        up_service: UpService,
+        ynab_service: YnabService,
+        category_service: CategoryService,
+        transaction_filter: TransactionFilter,
+    ):
+        self.up_service = up_service
+        self.ynab_service = ynab_service
+        self.category_service = category_service
+        self.transaction_filter = transaction_filter
 
     async def process_webhook_event(self, webhook_event: UpWebhookEvent) -> str:
         """Process a webhook event from Up Bank."""
