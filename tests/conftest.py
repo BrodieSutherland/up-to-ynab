@@ -149,7 +149,7 @@ def sample_ynab_transaction_response():
                 "transfer_account_id": None,
                 "transfer_transaction_id": None,
                 "matched_transaction_id": None,
-                "import_id": "up_test-transaction-id",
+                "import_id": "test-transaction-id",
                 "import_payee_name": "Test Merchant",
                 "import_payee_name_original": None,
                 "debt_transaction_type": None,

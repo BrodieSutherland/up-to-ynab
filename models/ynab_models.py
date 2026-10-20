@@ -13,7 +13,7 @@ class YnabTransactionDetail(BaseModel):
     memo: Optional[str] = None
     amount: int  # In milliunits
     date: str  # YYYY-MM-DD format
-    cleared: str = "uncleared"  # cleared, uncleared, reconciled
+    cleared: str  # cleared, uncleared, reconciled
     approved: bool = True
     flag_color: Optional[str] = None
     import_id: Optional[str] = None

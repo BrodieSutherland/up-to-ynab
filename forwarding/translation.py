@@ -1,4 +1,3 @@
-import hashlib
 from dataclasses import dataclass
 
 from forwarding.budget_index import BudgetIndex, YnabAccountRef
@@ -16,22 +15,23 @@ class Skip:
     reason: str
 
 
-def create_import_id(up_transaction_id: str) -> str:
-    """Create a unique import ID for YNAB (max 36 characters)."""
-    # For UUIDs (36 chars), just use the UUID without prefix to stay within
-    # limit
-    if len(up_transaction_id) == 36 and "-" in up_transaction_id:
-        return up_transaction_id
+def cleared_status(up_transaction: UpTransaction) -> str:
+    """The single place cleared is decided (#111 changes only this)."""
+    return "uncleared"
 
-    # For shorter IDs, add "up_" prefix if it fits
-    prefixed_id = f"up_{up_transaction_id}"
-    if len(prefixed_id) <= 36:
-        return prefixed_id
 
-    # For longer IDs, use a hash to ensure uniqueness while staying under
-    # limit
-    hash_hex = hashlib.sha256(up_transaction_id.encode()).hexdigest()
-    return hash_hex[:36]  # Use first 36 characters of hash
+def _memo(tx: UpTransaction) -> str | None:
+    a = tx.attributes
+    if a.message:
+        return a.message
+    if a.raw_text and a.raw_text != a.description:
+        return a.raw_text
+    return None
+
+
+def _date(tx: UpTransaction) -> str:
+    # createdAt in its own offset; never settledAt
+    return tx.attributes.created_at.date().isoformat()
 
 
 def translate(tx: UpTransaction, index: BudgetIndex) -> YnabTransactionDetail | Skip:
@@ -45,8 +45,9 @@ def translate(tx: UpTransaction, index: BudgetIndex) -> YnabTransactionDetail | 
         account_id=target.id,
         payee_name=tx.payee,
         category_id=index.category_match(tx.payee),
-        memo=tx.attributes.raw_text or tx.payee,
+        memo=_memo(tx),
         amount=tx.amount_milliunits,
-        date=tx.date,
-        import_id=create_import_id(tx.id),
+        date=_date(tx),
+        cleared=cleared_status(tx),
+        import_id=tx.id,
     )

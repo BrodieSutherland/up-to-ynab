@@ -35,7 +35,8 @@ def detail():
         memo="memo",
         amount=-12500,
         date="2024-01-01",
-        import_id="up_abc",
+        cleared="uncleared",
+        import_id="abc",
     )
 
 
@@ -54,7 +55,8 @@ class TestCreateTransaction:
         assert "/budgets/" not in request.url.path
         assert request.headers["Authorization"] == "Bearer test_ynab_token"
         sent = json.loads(request.content)["transaction"]
-        assert sent["import_id"] == "up_abc"
+        assert sent["import_id"] == "abc"
+        assert sent["cleared"] == "uncleared"
         assert sent["amount"] == -12500
         assert sent["account_id"] == "acct-1"
 

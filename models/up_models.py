@@ -169,12 +169,6 @@ class UpTransaction(BaseModel):
         """Get amount in milliunits for YNAB (multiply by 10)."""
         return self.attributes.amount.value_in_base_units * 10
 
-    @property
-    def date(self) -> str:
-        """Get transaction date in YNAB format (YYYY-MM-DD)."""
-        date_to_use = self.attributes.settled_at or self.attributes.created_at
-        return date_to_use.strftime("%Y-%m-%d")
-
 
 class UpTransactionResponse(BaseModel):
     """Up API transaction response model."""
