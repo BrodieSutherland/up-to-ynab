@@ -2,18 +2,20 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict
 
+import httpx2 as httpx
 import structlog
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from clients.errors import UpstreamError
+from clients.up import HttpUpClient, UpClient
+from clients.ynab import HttpYnabClient, YnabClient
 from database.connection import DatabaseManager
 from models.up_models import UpWebhookEvent
 from services.category_service import CategoryService
 from services.transaction_service import TransactionService
-from services.up_service import UpService
-from services.ynab_service import YnabService
 from utils.config import Settings
 from utils.filters import TransactionFilter
 from utils.logging import setup_logging
@@ -56,41 +58,71 @@ class WebhookResponse(BaseModel):
 class Services:
     """The service objects the routes and startup tasks use."""
 
-    up: UpService
+    up: UpClient
     transactions: TransactionService
 
 
-def build_services(settings: Settings, database: DatabaseManager) -> Services:
-    """Wire every service from settings; the only place services are built."""
-    up = UpService(api_token=settings.up_api_token, base_url=settings.up_base_url)
-    ynab = YnabService(
-        api_token=settings.ynab_api_token,
-        base_url=settings.ynab_base_url,
-        budget_id=settings.ynab_budget_id,
-        account_id=settings.ynab_account_id,
-    )
-    category = CategoryService(ynab, database.get_session)
+def build_services(
+    settings: Settings, database: DatabaseManager, up: UpClient, ynab: YnabClient
+) -> Services:
+    """Wire services from settings and clients; the only place they are built."""
+    category = CategoryService(database.get_session)
     transaction_filter = TransactionFilter(settings.internal_transfer_strings)
-    transactions = TransactionService(up, ynab, category, transaction_filter)
+    transactions = TransactionService(
+        up, ynab, category, transaction_filter, settings.ynab_account_id
+    )
     return Services(up=up, transactions=transactions)
 
 
 @asynccontextmanager
 async def open_services(settings: Settings) -> AsyncIterator[Services]:
-    """Create the database, build real services, and close resources on exit."""
-    database = DatabaseManager(settings.database_url, echo=settings.debug_mode)
-    try:
+    """Open the database and HTTP clients, build real services, close on exit."""
+    async with AsyncExitStack() as stack:
+        database = DatabaseManager(settings.database_url, echo=settings.debug_mode)
+        stack.push_async_callback(database.close)
         await database.create_tables()
-        yield build_services(settings, database)
-    finally:
-        await database.close()
+        up_http = await stack.enter_async_context(httpx.AsyncClient())
+        ynab_http = await stack.enter_async_context(httpx.AsyncClient())
+        up = HttpUpClient(up_http, settings.up_api_token, settings.up_base_url)
+        ynab = HttpYnabClient(
+            ynab_http,
+            settings.ynab_api_token,
+            settings.ynab_base_url,
+            settings.ynab_budget_id,
+        )
+        yield build_services(settings, database, up, ynab)
+
+
+async def ping_webhook(up: UpClient, url: str) -> bool:
+    """Make sure a webhook for url exists in Up, creating it if missing."""
+    try:
+        webhooks = await up.list_webhooks()
+        logger.info("Retrieved webhooks", count=len(webhooks))
+    except UpstreamError as e:
+        logger.error("Failed to list webhooks", status_code=e.status_code, error=str(e))
+        webhooks = []
+
+    if any(webhook.url == url for webhook in webhooks):
+        logger.info("Webhook already exists", url=url)
+        return True
+
+    logger.info("Webhook not found, creating new one", url=url)
+    try:
+        webhook_id = await up.create_webhook(url)
+    except UpstreamError as e:
+        logger.error(
+            "Failed to create webhook", url=url, status_code=e.status_code, error=str(e)
+        )
+        return False
+    logger.info("Webhook created successfully", webhook_id=webhook_id, url=url)
+    return True
 
 
 async def _run_startup_tasks(settings: Settings, services: Services) -> None:
     """Set up the Up webhook and warm the category data."""
     try:
         if settings.webhook_url:
-            webhook_exists = await services.up.ping_webhook(settings.webhook_url)
+            webhook_exists = await ping_webhook(services.up, settings.webhook_url)
             if webhook_exists:
                 logger.info("Webhook is ready", url=settings.webhook_url)
             else:

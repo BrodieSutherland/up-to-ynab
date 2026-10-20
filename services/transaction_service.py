@@ -1,12 +1,35 @@
+import hashlib
+from typing import Optional
+
 import structlog
 
+from clients.errors import UpstreamError
+from clients.up import UpClient
+from clients.ynab import Created, YnabClient
 from models.up_models import UpTransaction, UpWebhookEvent
+from models.ynab_models import YnabTransactionDetail
 from services.category_service import CategoryService
-from services.up_service import UpService
-from services.ynab_service import YnabService
 from utils.filters import TransactionFilter
 
 logger = structlog.get_logger()
+
+
+def create_import_id(up_transaction_id: str) -> str:
+    """Create a unique import ID for YNAB (max 36 characters)."""
+    # For UUIDs (36 chars), just use the UUID without prefix to stay within
+    # limit
+    if len(up_transaction_id) == 36 and "-" in up_transaction_id:
+        return up_transaction_id
+
+    # For shorter IDs, add "up_" prefix if it fits
+    prefixed_id = f"up_{up_transaction_id}"
+    if len(prefixed_id) <= 36:
+        return prefixed_id
+
+    # For longer IDs, use a hash to ensure uniqueness while staying under
+    # limit
+    hash_hex = hashlib.sha256(up_transaction_id.encode()).hexdigest()
+    return hash_hex[:36]  # Use first 36 characters of hash
 
 
 class TransactionService:
@@ -14,15 +37,34 @@ class TransactionService:
 
     def __init__(
         self,
-        up_service: UpService,
-        ynab_service: YnabService,
+        up: UpClient,
+        ynab: YnabClient,
         category_service: CategoryService,
         transaction_filter: TransactionFilter,
+        account_id: str,
     ):
-        self.up_service = up_service
-        self.ynab_service = ynab_service
+        self.up = up
+        self.ynab = ynab
+        self.account_id = account_id
         self.category_service = category_service
         self.transaction_filter = transaction_filter
+
+    def _should_process(self, webhook_event: UpWebhookEvent) -> bool:
+        """Determine if a webhook event should be processed."""
+        # Only process transaction creation events
+        if webhook_event.data.event_type != "TRANSACTION_CREATED":
+            logger.debug(
+                "Ignoring non-transaction event",
+                event_type=webhook_event.data.event_type,
+            )
+            return False
+
+        # Must have transaction ID
+        if not webhook_event.data.transaction_id:
+            logger.warning("Transaction event missing transaction ID")
+            return False
+
+        return True
 
     async def process_webhook_event(self, webhook_event: UpWebhookEvent) -> str:
         """Process a webhook event from Up Bank."""
@@ -33,7 +75,7 @@ class TransactionService:
         )
 
         # Check if we should process this event
-        if not self.up_service.should_process_transaction(webhook_event):
+        if not self._should_process(webhook_event):
             return "Event ignored - not a transaction creation"
 
         # Get the transaction ID
@@ -47,8 +89,15 @@ class TransactionService:
             return f"Transaction {transaction_id} already processed"
 
         # Fetch the transaction from Up
-        up_transaction = await self.up_service.get_transaction(transaction_id)
-        if not up_transaction:
+        try:
+            up_transaction = await self.up.get_transaction(transaction_id)
+        except UpstreamError as e:
+            logger.error(
+                "Failed to fetch Up transaction",
+                transaction_id=transaction_id,
+                status_code=e.status_code,
+                error=str(e),
+            )
             await self.category_service.record_processed_transaction(
                 up_transaction_id=transaction_id,
                 ynab_transaction_id=None,
@@ -99,20 +148,54 @@ class TransactionService:
             payee_mappings = await self.category_service.get_payee_category_mappings()
 
             # Find category for this payee
-            category_id = await self.ynab_service.find_category_for_payee(
-                up_transaction.payee, payee_mappings
+            category_id = payee_mappings.get(up_transaction.payee)
+            if category_id:
+                logger.info(
+                    "Found category mapping for payee",
+                    payee=up_transaction.payee,
+                    category_id=category_id,
+                )
+            else:
+                logger.info(
+                    "No category mapping found for payee", payee=up_transaction.payee
+                )
+
+            transaction_detail = YnabTransactionDetail(
+                account_id=self.account_id,
+                payee_name=up_transaction.payee,
+                category_id=category_id,
+                memo=up_transaction.attributes.raw_text or up_transaction.payee,
+                amount=up_transaction.amount_milliunits,
+                date=up_transaction.date,
+                import_id=create_import_id(up_transaction.id),
             )
 
             # Create YNAB transaction
-            ynab_transaction = await self.ynab_service.create_transaction(
-                up_transaction, category_id
-            )
+            created: Optional[Created] = None
+            try:
+                outcome = await self.ynab.create_transaction(transaction_detail)
+            except UpstreamError as e:
+                logger.error(
+                    "Failed to create YNAB transaction",
+                    up_transaction_id=up_transaction.id,
+                    status_code=e.status_code,
+                    error=str(e),
+                )
+            else:
+                if isinstance(outcome, Created):
+                    created = outcome
+                else:
+                    # ticket 05: Forwarded
+                    logger.error(
+                        "YNAB transaction already imported",
+                        up_transaction_id=up_transaction.id,
+                    )
 
-            if ynab_transaction:
+            if created:
                 # Record successful processing
                 await self.category_service.record_processed_transaction(
                     up_transaction_id=up_transaction.id,
-                    ynab_transaction_id=ynab_transaction.id,
+                    ynab_transaction_id=created.ynab_id,
                     payee_name=up_transaction.payee,
                     amount=up_transaction.amount_milliunits,
                     transaction_date=up_transaction.date,
@@ -122,7 +205,7 @@ class TransactionService:
                 logger.info(
                     "Transaction processed successfully",
                     up_transaction_id=up_transaction.id,
-                    ynab_transaction_id=ynab_transaction.id,
+                    ynab_transaction_id=created.ynab_id,
                     payee=up_transaction.payee,
                     category_id=category_id,
                 )

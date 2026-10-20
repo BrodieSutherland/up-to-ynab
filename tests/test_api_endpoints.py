@@ -3,21 +3,10 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from app import Services, create_app, open_services
-
-
-class FakeUp:
-    """In-memory stand-in for UpService at the app seam."""
-
-    def __init__(self, webhook_ok=True, error=None):
-        self.webhook_ok = webhook_ok
-        self.error = error
-        self.pinged_urls = []
-
-    async def ping_webhook(self, url):
-        self.pinged_urls.append(url)
-        if self.error:
-            raise self.error
-        return self.webhook_ok
+from clients.errors import UpstreamError
+from clients.up import HttpUpClient
+from models.up_models import UpWebhook
+from tests.fakes.up import FakeUpClient
 
 
 class FakeTransactions:
@@ -48,11 +37,6 @@ class FakeTransactions:
         if self.refresh_error:
             raise self.refresh_error
         return self.refresh_result
-
-
-@pytest.fixture
-def fake_up():
-    return FakeUp()
 
 
 @pytest.fixture
@@ -165,33 +149,57 @@ def _client(settings, up, transactions):
 class TestAPIStartupShutdown:
     """Test application startup behaviour."""
 
-    def test_startup_pings_webhook_and_refreshes(
-        self, test_settings, fake_up, fake_transactions
+    def test_startup_creates_webhook_when_none_listed(
+        self, test_settings, fake_transactions
     ):
-        with _client(test_settings, fake_up, fake_transactions) as c:
+        up = FakeUpClient()
+        with _client(test_settings, up, fake_transactions) as c:
             assert c.get("/health").status_code == 200
 
-        assert fake_up.pinged_urls == ["https://test.example.com/webhook"]
+        assert up.created_webhooks == ["https://test.example.com/webhook"]
         assert fake_transactions.refresh_count == 1
 
-    def test_startup_skips_ping_without_webhook_url(
+    def test_startup_keeps_matching_webhook(self, test_settings, fake_transactions):
+        up = FakeUpClient(
+            webhooks=[
+                UpWebhook(id="w1", url="https://test.example.com/webhook"),
+            ]
+        )
+        with _client(test_settings, up, fake_transactions) as c:
+            assert c.get("/health").status_code == 200
+
+        assert up.created_webhooks == []
+
+    def test_startup_creates_webhook_when_listing_fails(
+        self, test_settings, fake_transactions
+    ):
+        up = FakeUpClient(errors={"list_webhooks": UpstreamError("down", 503)})
+        with _client(test_settings, up, fake_transactions) as c:
+            assert c.get("/health").status_code == 200
+
+        assert up.created_webhooks == ["https://test.example.com/webhook"]
+
+    def test_startup_survives_failed_webhook_creation(
+        self, test_settings, fake_transactions
+    ):
+        up = FakeUpClient(errors={"create_webhook": UpstreamError("down", 500)})
+        with _client(test_settings, up, fake_transactions) as c:
+            assert c.get("/health").status_code == 200
+
+        assert fake_transactions.refresh_count == 1
+
+    def test_startup_skips_webhook_without_url(
         self, test_settings, fake_up, fake_transactions
     ):
         settings = test_settings.model_copy(update={"webhook_url": None})
         with _client(settings, fake_up, fake_transactions) as c:
             assert c.get("/health").status_code == 200
 
-        assert fake_up.pinged_urls == []
+        assert fake_up.created_webhooks == []
         assert fake_transactions.refresh_count == 1
 
-    def test_startup_survives_failed_webhook_setup(
-        self, test_settings, fake_transactions
-    ):
-        with _client(test_settings, FakeUp(webhook_ok=False), fake_transactions) as c:
-            assert c.get("/health").status_code == 200
-
     def test_startup_survives_unexpected_error(self, test_settings, fake_transactions):
-        up = FakeUp(error=RuntimeError("boom"))
+        up = FakeUpClient(errors={"list_webhooks": RuntimeError("boom")})
         with _client(test_settings, up, fake_transactions) as c:
             assert c.get("/health").status_code == 200
 
@@ -204,6 +212,9 @@ class TestAPIStartupShutdown:
 
     async def test_open_services_builds_real_services(self, test_settings):
         async with open_services(test_settings) as built:
+            assert isinstance(built.up, HttpUpClient)
+            http = built.up._http
+            assert http.is_closed is False
             category = built.transactions.category_service
             await category.record_processed_transaction(
                 up_transaction_id="abc",
@@ -213,6 +224,8 @@ class TestAPIStartupShutdown:
                 transaction_date="2024-01-01",
             )
             assert await category.is_transaction_processed("abc") is True
+
+        assert http.is_closed is True
 
     def test_missing_token_fails_startup(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)

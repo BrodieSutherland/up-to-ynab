@@ -175,3 +175,11 @@ class UpTransactionResponse(BaseModel):
     """Up API transaction response model."""
 
     data: UpTransaction
+
+
+class UpWebhook(BaseModel):
+    """An Up webhook subscription."""
+
+    id: str
+    url: str
+    description: Optional[str] = None

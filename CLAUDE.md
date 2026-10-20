@@ -40,9 +40,9 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 
 ## Layout
 
-- `app.py` — composition root: `Services` dataclass, `build_services(settings, database)`, `open_services(settings)` (creates the DB, builds real services, closes the DB on exit), `create_app(settings=None, services=None)` and its lifespan (webhook ping + category refresh; owns services only when it built them). Routes read `app.state.services`. Start with `uvicorn --factory app:create_app`; there is no module-level `app`.
+- `app.py` — composition root: `Services` dataclass, `build_services(settings, database, up, ynab)`, `open_services(settings)` (owns the DB and both `httpx2.AsyncClient`s via one `AsyncExitStack`, builds real services, closes everything on exit), `ping_webhook(up, url)`, `create_app(settings=None, services=None)` and its lifespan (webhook ping + category refresh; owns services only when it built them). Routes read `app.state.services`. Start with `uvicorn --factory app:create_app`; there is no module-level `app`.
 - `services/transaction_service.py` — orchestrator: webhook event → dedupe check → fetch from Up → filter → category lookup → create in YNAB → record result.
-- `services/up_service.py`, `services/ynab_service.py` — thin `httpx2.AsyncClient` wrappers (imported as `httpx`). Errors are logged and swallowed; methods return `None`/`[]`/`False` instead of raising.
+- `clients/` — `UpClient` / `YnabClient` Protocols, each with an `Http*Client` adapter on an injected `httpx2.AsyncClient` opened/closed by `open_services`. Non-success, transport and parse errors raise `clients.errors.UpstreamError`; a YNAB 409 on create returns `AlreadyImported`. YNAB paths use `/plans/`. Adapters don't log.
 - `services/category_service.py` — DB access for payee→category mappings and processed-transaction log.
 - `database/` — SQLAlchemy 2.0 async models + `DatabaseManager(database_url, echo)` (no global instance) and the `SessionFactory` type that `CategoryService` receives.
 - `models/` — Pydantic v2 models for Up and YNAB API payloads.
@@ -52,18 +52,19 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 
 ## Conventions
 
-- Imports are absolute from repo root (`from services.up_service import UpService`). No package install; run from repo root.
+- Imports are absolute from repo root (`from clients.up import HttpUpClient`). No package install; run from repo root.
 - Constructor injection: services take plain values (tokens, URLs, IDs) or other services; nothing but `build_services`/`create_app` reads `Settings`. A missing or empty required token fails startup with a `ValidationError` naming the field (never the value).
 - Logging is `structlog` with keyword context: `logger.info("Message", transaction_id=..., payee=...)`. Never log tokens or headers.
 - Money is YNAB milliunits (int). Use `UpTransaction.amount_milliunits`, not the Up decimal string.
-- YNAB `import_id` max is 36 chars — see `YnabService.create_import_id`.
+- YNAB `import_id` max is 36 chars — see `services.transaction_service.create_import_id`.
+- Clients raise `UpstreamError`; callers decide what a failure means (record it, retry, ignore).
 - Every outcome of processing a transaction (processed / skipped / failed) is written to `processed_transactions`; that table is the dedupe key on `up_transaction_id`.
 
 ## Testing
 
 - Redacted real Up payloads live in `tests/fixtures/up/`.
 - `tests/conftest.py` no longer touches env vars. `test_settings` is `Settings(..., _env_file=None)` over in-memory SQLite; the async `database` fixture and `services` fixture (`build_services(test_settings, database)`) give real services. Build any other `Settings` in tests with `_env_file=None`.
-- Mock HTTP with `patch("httpx2.AsyncClient")` (until ticket 04). API tests use `with TestClient(create_app(settings, Services(up=fake, transactions=fake)))` with local fakes. DB tests use the real in-memory `database`; seed and assert in fresh `async with database.get_session()` blocks (a shared session goes stale). Don't patch `app.*`, settings, or the database manager.
+- In-memory fakes live in `tests/fakes/` (`FakeUpClient`, `FakeYnabClient`); the `services` fixture wires them. Real adapters are tested with `httpx2.MockTransport`; never patch the HTTP client. API tests use `with TestClient(create_app(settings, Services(up=fake, transactions=fake)))` with local fakes. DB tests use the real in-memory `database`; seed and assert in fresh `async with database.get_session()` blocks (a shared session goes stale). Don't patch `app.*`, settings, or the database manager.
 - `asyncio_mode = "auto"` — async tests need no decorator.
 
 ## Dependencies
@@ -74,7 +75,7 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 
 ## Known gaps (don't assume these work)
 
-- `CategoryService.sync_categories_from_ynab` is a TODO: it fetches YNAB data but never writes `payee_category_mappings`. Nothing calls `update_payee_category_mapping`, so every transaction currently goes to YNAB uncategorised.
+- `CategoryService.sync_categories_from_ynab` is a TODO: it no longer fetches YNAB and never writes `payee_category_mappings`. Nothing calls `update_payee_category_mapping`, so every transaction currently goes to YNAB uncategorised.
 - DB model timestamp defaults use `default=datetime.now(UTC)` (evaluated once at import), not a callable.
 - No Alembic installed and no migrations; schema is created via `Base.metadata.create_all` on startup.
 - `/refresh` and `/webhook` have no auth; webhook signature (`X-Up-Authenticity-Signature`) is not verified.

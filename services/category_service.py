@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.connection import SessionFactory
 from database.models import PayeeCategoryMapping, ProcessedTransaction
-from services.ynab_service import YnabService
 
 logger = structlog.get_logger()
 
@@ -15,8 +14,7 @@ logger = structlog.get_logger()
 class CategoryService:
     """Service for managing payee-category mappings and database sync."""
 
-    def __init__(self, ynab_service: YnabService, session_factory: SessionFactory):
-        self.ynab_service = ynab_service
+    def __init__(self, session_factory: SessionFactory):
         self._session_factory = session_factory
 
     async def sync_categories_from_ynab(self) -> None:
@@ -24,16 +22,6 @@ class CategoryService:
         logger.info("Starting category sync from YNAB")
 
         try:
-            # Get all categories and payees from YNAB
-            categories = await self.ynab_service.get_categories()
-            payees = await self.ynab_service.get_payees()
-
-            logger.info(
-                "Retrieved YNAB data for sync",
-                categories_count=len(categories),
-                payees_count=len(payees),
-            )
-
             # TODO: Implement actual transaction history analysis
             # For now, we'll just ensure the database structure is ready
             async with self._session_factory() as session:

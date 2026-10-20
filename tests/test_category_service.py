@@ -1,5 +1,3 @@
-from unittest.mock import patch
-
 import pytest
 from sqlalchemy import select
 
@@ -17,44 +15,9 @@ class TestCategoryService:
         return services.transactions.category_service
 
     @pytest.mark.asyncio
-    async def test_sync_categories_from_ynab(
-        self, category_service, sample_ynab_budget_data
-    ):
-        """Test syncing categories from YNAB."""
-        # Mock YNAB service methods
-        with (
-            patch.object(
-                category_service.ynab_service, "get_categories"
-            ) as mock_get_categories,
-            patch.object(
-                category_service.ynab_service, "get_payees"
-            ) as mock_get_payees,
-        ):
-
-            # Setup mocks
-            from models.ynab_models import YnabCategory
-
-            mock_categories = [
-                YnabCategory(
-                    id="test-category-id",
-                    name="Test Category",
-                    category_group_id="test-group-id",
-                    hidden=False,
-                    budgeted=0,
-                    activity=0,
-                    balance=0,
-                    deleted=False,
-                )
-            ]
-            mock_get_categories.return_value = mock_categories
-            mock_get_payees.return_value = []
-
-            # Execute
-            await category_service.sync_categories_from_ynab()
-
-            # Verify
-            mock_get_categories.assert_called_once()
-            mock_get_payees.assert_called_once()
+    async def test_sync_categories_from_ynab(self, category_service):
+        """Sync completes without touching YNAB (history analysis is a TODO)."""
+        await category_service.sync_categories_from_ynab()
 
     @pytest.mark.asyncio
     async def test_get_payee_category_mappings(self, category_service, database):
@@ -205,7 +168,7 @@ class TestCategoryService:
         """A real database error (no tables) returns False."""
         broken = DatabaseManager(test_settings.database_url)
         try:
-            service = CategoryService(None, broken.get_session)
+            service = CategoryService(broken.get_session)
 
             assert await service.is_transaction_processed("test-tx-id") is False
         finally:

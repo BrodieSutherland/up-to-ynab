@@ -45,9 +45,9 @@ profile = "black"
 line_length = 88
 [tool.coverage.run]
 branch = true
-source = ["app", "database", "models", "services", "utils"]
+source = ["app", "clients", "database", "models", "services", "utils"]
 omit = ["tests/*", ".scratch/*", ".venv/*", "venv/*"]
 
 [tool.coverage.report]
-fail_under = 89
+fail_under = 92
 show_missing = true

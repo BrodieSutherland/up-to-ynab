@@ -132,3 +132,16 @@ class YnabBudget(BaseModel):
     payees: List[YnabPayee]
     categories: List[YnabCategory]
     category_groups: List[YnabCategoryGroup]
+
+
+class YnabTransaction(BaseModel):
+    """A transaction as listed by YNAB (only the fields the app reads)."""
+
+    id: str
+    date: str
+    amount: int
+    payee_name: Optional[str] = None
+    category_id: Optional[str] = None
+    transfer_account_id: Optional[str] = None
+    deleted: bool
+    subtransactions: list[dict] = []

@@ -5,6 +5,9 @@ import pytest_asyncio
 
 from app import Services, build_services
 from database.connection import DatabaseManager
+from models.up_models import UpTransaction
+from tests.fakes.up import FakeUpClient
+from tests.fakes.ynab import FakeYnabClient
 from utils.config import Settings
 
 # Test database URL
@@ -47,9 +50,26 @@ async def database(
 
 
 @pytest.fixture
-def services(test_settings: Settings, database: DatabaseManager) -> Services:
-    """Real services wired over the in-memory database."""
-    return build_services(test_settings, database)
+def fake_up(sample_up_transaction_data) -> FakeUpClient:
+    """Fake Up holding the sample transaction under its id."""
+    transaction = UpTransaction(**sample_up_transaction_data["data"])
+    return FakeUpClient(transactions={"test-transaction-id": transaction})
+
+
+@pytest.fixture
+def fake_ynab() -> FakeYnabClient:
+    return FakeYnabClient()
+
+
+@pytest.fixture
+def services(
+    test_settings: Settings,
+    database: DatabaseManager,
+    fake_up: FakeUpClient,
+    fake_ynab: FakeYnabClient,
+) -> Services:
+    """Real services over the in-memory database and fake Up/YNAB clients."""
+    return build_services(test_settings, database, fake_up, fake_ynab)
 
 
 # Sample test data fixtures

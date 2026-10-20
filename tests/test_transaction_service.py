@@ -1,372 +1,208 @@
 from unittest.mock import patch
 
 import pytest
+from sqlalchemy import select
 
+from clients.errors import UpstreamError
+from database.models import ProcessedTransaction
 from models.up_models import UpTransaction, UpWebhookEvent
-from models.ynab_models import YnabTransactionResponse
+from services.transaction_service import create_import_id
 
 
-class TestTransactionService:
-    """Test cases for Transaction service."""
+@pytest.fixture
+def transaction_service(services):
+    return services.transactions
 
-    @pytest.fixture
-    def transaction_service(self, services):
-        """Real TransactionService over the in-memory database."""
-        return services.transactions
 
-    @pytest.fixture
-    def sample_up_transaction(self, sample_up_transaction_data):
-        """Create sample UpTransaction for testing."""
-        return UpTransaction(**sample_up_transaction_data["data"])
+@pytest.fixture
+def up_transaction(sample_up_transaction_data):
+    return UpTransaction(**sample_up_transaction_data["data"])
 
-    @pytest.fixture
-    def sample_webhook_event(self, sample_up_webhook_event_data):
-        """Create sample webhook event for testing."""
-        return UpWebhookEvent(**sample_up_webhook_event_data)
 
-    @pytest.mark.asyncio
-    async def test_process_webhook_event_success(
-        self, transaction_service, sample_webhook_event, sample_up_transaction
+@pytest.fixture
+def webhook_event(sample_up_webhook_event_data):
+    return UpWebhookEvent(**sample_up_webhook_event_data)
+
+
+async def rows(database):
+    async with database.get_session() as session:
+        result = await session.execute(select(ProcessedTransaction))
+        return list(result.scalars().all())
+
+
+class TestProcessWebhookEvent:
+    async def test_success_creates_ynab_transaction(
+        self, transaction_service, webhook_event, fake_ynab, database
     ):
-        """Test successful webhook event processing."""
-        with (
-            patch.object(
-                transaction_service.up_service,
-                "should_process_transaction",
-                return_value=True,
-            ),
-            patch.object(
-                transaction_service.category_service,
-                "is_transaction_processed",
-                return_value=False,
-            ),
-            patch.object(
-                transaction_service.up_service,
-                "get_transaction",
-                return_value=sample_up_transaction,
-            ),
-            patch.object(
-                transaction_service,
-                "process_transaction",
-                return_value="Transaction processed",
-            ),
-        ):
+        result = await transaction_service.process_webhook_event(webhook_event)
 
-            result = await transaction_service.process_webhook_event(
-                sample_webhook_event
-            )
+        assert result == "$-12.50 paid to Test Merchant at 2024-01-01"
+        [created] = fake_ynab.created
+        assert created.account_id == "test_account_id"
+        assert created.amount == -12500
+        assert created.import_id == "up_test-transaction-id"
+        assert created.memo == "Test Purchase"
+        assert created.payee_name == "Test Merchant"
+        assert created.date == "2024-01-01"
+        [row] = await rows(database)
+        assert row.up_transaction_id == "test-transaction-id"
+        assert row.ynab_transaction_id == "ynab-1"
+        assert row.status == "processed"
 
-            assert result == "Transaction processed"
-
-    @pytest.mark.asyncio
-    async def test_process_webhook_event_should_not_process(
-        self, transaction_service, sample_webhook_event
+    async def test_non_created_event_is_ignored(
+        self, transaction_service, sample_up_webhook_event_data, fake_ynab
     ):
-        """Test webhook event that shouldn't be processed."""
-        with patch.object(
-            transaction_service.up_service,
-            "should_process_transaction",
-            return_value=False,
-        ):
+        sample_up_webhook_event_data["data"]["attributes"][
+            "eventType"
+        ] = "TRANSACTION_SETTLED"
+        event = UpWebhookEvent(**sample_up_webhook_event_data)
 
-            result = await transaction_service.process_webhook_event(
-                sample_webhook_event
-            )
+        result = await transaction_service.process_webhook_event(event)
 
-            assert result == "Event ignored - not a transaction creation"
+        assert result == "Event ignored - not a transaction creation"
+        assert fake_ynab.created == []
 
-    @pytest.mark.asyncio
-    async def test_process_webhook_event_already_processed(
-        self, transaction_service, sample_webhook_event
+    async def test_event_without_transaction_id_is_ignored(
+        self, transaction_service, sample_up_webhook_event_data
     ):
-        """Test webhook event for already processed transaction."""
-        with (
-            patch.object(
-                transaction_service.up_service,
-                "should_process_transaction",
-                return_value=True,
-            ),
-            patch.object(
-                transaction_service.category_service,
-                "is_transaction_processed",
-                return_value=True,
-            ),
-        ):
+        sample_up_webhook_event_data["data"]["relationships"] = None
+        event = UpWebhookEvent(**sample_up_webhook_event_data)
 
-            result = await transaction_service.process_webhook_event(
-                sample_webhook_event
-            )
+        result = await transaction_service.process_webhook_event(event)
 
-            assert "already processed" in result
+        assert result == "Event ignored - not a transaction creation"
 
-    @pytest.mark.asyncio
-    async def test_process_webhook_event_failed_fetch(
-        self, transaction_service, sample_webhook_event
+    async def test_already_processed(
+        self, transaction_service, webhook_event, fake_ynab
     ):
-        """Test webhook event when transaction fetch fails."""
-        with (
-            patch.object(
-                transaction_service.up_service,
-                "should_process_transaction",
-                return_value=True,
-            ),
-            patch.object(
-                transaction_service.category_service,
-                "is_transaction_processed",
-                return_value=False,
-            ),
-            patch.object(
-                transaction_service.up_service,
-                "get_transaction",
-                return_value=None,
-            ),
-            patch.object(
-                transaction_service.category_service,
-                "record_processed_transaction",
-            ) as mock_record,
-        ):
+        await transaction_service.process_webhook_event(webhook_event)
 
-            result = await transaction_service.process_webhook_event(
-                sample_webhook_event
-            )
+        result = await transaction_service.process_webhook_event(webhook_event)
 
-            assert "Failed to fetch transaction" in result
-            mock_record.assert_called_once()
+        assert result == "Transaction test-transaction-id already processed"
+        assert len(fake_ynab.created) == 1
 
-    @pytest.mark.asyncio
-    async def test_process_transaction_success(
-        self, transaction_service, sample_up_transaction
+    async def test_up_fetch_failure_is_recorded(
+        self, transaction_service, webhook_event, fake_up, fake_ynab, database
     ):
-        """Test successful transaction processing."""
-        mock_ynab_transaction = YnabTransactionResponse(
-            id="test-ynab-tx-id",
-            date="2024-01-01",
-            amount=-12500,
-            cleared="cleared",
-            approved=True,
-            account_id="test-account-id",
-            deleted=False,
+        fake_up.errors["get_transaction"] = UpstreamError("boom", 500)
+
+        result = await transaction_service.process_webhook_event(webhook_event)
+
+        assert result == "Failed to fetch transaction test-transaction-id from Up API"
+        [row] = await rows(database)
+        assert row.status == "failed"
+        assert row.error_message == "Failed to fetch transaction from Up API"
+        assert fake_ynab.created == []
+
+    async def test_unknown_transaction_is_a_failed_fetch(
+        self, transaction_service, webhook_event, fake_up
+    ):
+        fake_up.transactions.clear()
+
+        result = await transaction_service.process_webhook_event(webhook_event)
+
+        assert "Failed to fetch transaction" in result
+
+
+class TestProcessTransaction:
+    async def test_ynab_failure_is_recorded(
+        self, transaction_service, up_transaction, fake_ynab, database
+    ):
+        fake_ynab.errors["create_transaction"] = UpstreamError("boom", 500)
+
+        result = await transaction_service.process_transaction(up_transaction)
+
+        assert result == "Failed to create YNAB transaction for Test Merchant"
+        [row] = await rows(database)
+        assert row.status == "failed"
+        assert row.ynab_transaction_id is None
+        assert row.error_message == "Failed to create YNAB transaction"
+
+    async def test_already_imported_is_still_a_failure(
+        self, transaction_service, up_transaction, fake_ynab, database
+    ):
+        fake_ynab.already_imported = True
+
+        result = await transaction_service.process_transaction(up_transaction)
+
+        assert result == "Failed to create YNAB transaction for Test Merchant"
+        [row] = await rows(database)
+        assert row.status == "failed"
+
+    async def test_payee_mapping_sets_category(
+        self, transaction_service, up_transaction, fake_ynab
+    ):
+        await transaction_service.category_service.update_payee_category_mapping(
+            "Test Merchant", "cat-1", "Groceries"
         )
 
-        with (
-            patch.object(
-                transaction_service.transaction_filter,
-                "should_process_transaction",
-                return_value=True,
-            ),
-            patch.object(
-                transaction_service.category_service,
-                "get_payee_category_mappings",
-                return_value={},
-            ),
-            patch.object(
-                transaction_service.ynab_service,
-                "find_category_for_payee",
-                return_value=None,
-            ),
-            patch.object(
-                transaction_service.ynab_service,
-                "create_transaction",
-                return_value=mock_ynab_transaction,
-            ),
-            patch.object(
-                transaction_service.category_service,
-                "record_processed_transaction",
-            ) as mock_record,
-        ):
+        await transaction_service.process_transaction(up_transaction)
 
-            result = await transaction_service.process_transaction(
-                sample_up_transaction
-            )
+        assert fake_ynab.created[0].category_id == "cat-1"
 
-            assert "Test Merchant" in result
-            assert "$-12.50" in result
-            mock_record.assert_called_once_with(
-                up_transaction_id="test-transaction-id",
-                ynab_transaction_id="test-ynab-tx-id",
-                payee_name="Test Merchant",
-                amount=-12500,
-                transaction_date="2024-01-01",
-                status="processed",
-            )
-
-    @pytest.mark.asyncio
-    async def test_process_transaction_filtered(
-        self, transaction_service, sample_up_transaction
+    async def test_no_mapping_leaves_category_empty(
+        self, transaction_service, up_transaction, fake_ynab
     ):
-        """Test transaction processing when transaction is filtered out."""
-        with (
-            patch.object(
-                transaction_service.transaction_filter,
-                "should_process_transaction",
-                return_value=False,
-            ),
-            patch.object(
-                transaction_service.transaction_filter,
-                "get_filtered_reason",
-                return_value="Internal transfer detected",
-            ),
-            patch.object(
-                transaction_service.category_service,
-                "record_processed_transaction",
-            ) as mock_record,
-        ):
+        await transaction_service.process_transaction(up_transaction)
 
-            result = await transaction_service.process_transaction(
-                sample_up_transaction
-            )
+        assert fake_ynab.created[0].category_id is None
 
-            assert "Transaction filtered: Internal transfer detected" == result
-            mock_record.assert_called_once()
-            # Verify it was recorded as skipped
-            call_args = mock_record.call_args
-            assert call_args[1]["status"] == "skipped"
-
-    @pytest.mark.asyncio
-    async def test_process_transaction_with_category(
-        self, transaction_service, sample_up_transaction
+    async def test_internal_transfer_is_skipped(
+        self, transaction_service, sample_up_transaction_data, fake_ynab, database
     ):
-        """Test transaction processing with category assignment."""
-        mock_ynab_transaction = YnabTransactionResponse(
-            id="test-ynab-tx-id",
-            date="2024-01-01",
-            amount=-12500,
-            cleared="cleared",
-            approved=True,
-            account_id="test-account-id",
-            category_id="test-category-id",
-            deleted=False,
-        )
+        data = sample_up_transaction_data["data"]
+        data["attributes"]["description"] = "Transfer to Savings"
+        transfer = UpTransaction(**data)
 
-        payee_mappings = {"Test Merchant": "test-category-id"}
+        result = await transaction_service.process_transaction(transfer)
 
-        with (
-            patch.object(
-                transaction_service.transaction_filter,
-                "should_process_transaction",
-                return_value=True,
-            ),
-            patch.object(
-                transaction_service.category_service,
-                "get_payee_category_mappings",
-                return_value=payee_mappings,
-            ),
-            patch.object(
-                transaction_service.ynab_service,
-                "find_category_for_payee",
-                return_value="test-category-id",
-            ),
-            patch.object(
-                transaction_service.ynab_service,
-                "create_transaction",
-                return_value=mock_ynab_transaction,
-            ),
-            patch.object(
-                transaction_service.category_service,
-                "record_processed_transaction",
-            ),
-        ):
+        assert result.startswith("Transaction filtered: ")
+        assert fake_ynab.created == []
+        [row] = await rows(database)
+        assert row.status == "skipped"
 
-            result = await transaction_service.process_transaction(
-                sample_up_transaction
-            )
-
-            assert "Test Merchant" in result
-            # Verify category was passed to create_transaction
-            transaction_service.ynab_service.create_transaction.assert_called_once_with(
-                sample_up_transaction, "test-category-id"
-            )
-
-    @pytest.mark.asyncio
-    async def test_process_transaction_ynab_creation_failed(
-        self, transaction_service, sample_up_transaction
+    async def test_unexpected_exception_is_recorded(
+        self, transaction_service, up_transaction, fake_ynab, database
     ):
-        """Test transaction processing when YNAB creation fails."""
-        with (
-            patch.object(
-                transaction_service.transaction_filter,
-                "should_process_transaction",
-                return_value=True,
-            ),
-            patch.object(
-                transaction_service.category_service,
-                "get_payee_category_mappings",
-                return_value={},
-            ),
-            patch.object(
-                transaction_service.ynab_service,
-                "find_category_for_payee",
-                return_value=None,
-            ),
-            patch.object(
-                transaction_service.ynab_service,
-                "create_transaction",
-                return_value=None,
-            ),
-            patch.object(
-                transaction_service.category_service,
-                "record_processed_transaction",
-            ) as mock_record,
-        ):
+        fake_ynab.errors["create_transaction"] = RuntimeError("Unexpected error")
 
-            result = await transaction_service.process_transaction(
-                sample_up_transaction
-            )
+        result = await transaction_service.process_transaction(up_transaction)
 
-            assert "Failed to create YNAB transaction" in result
-            # Verify it was recorded as failed
-            call_args = mock_record.call_args
-            assert call_args[1]["status"] == "failed"
-            assert call_args[1]["ynab_transaction_id"] is None
+        assert result == "Error processing transaction: Unexpected error"
+        [row] = await rows(database)
+        assert row.status == "failed"
+        assert row.error_message == "Unexpected error"
 
-    @pytest.mark.asyncio
-    async def test_process_transaction_exception(
-        self, transaction_service, sample_up_transaction
-    ):
-        """Test transaction processing with unexpected exception."""
-        with (
-            patch.object(
-                transaction_service.transaction_filter,
-                "should_process_transaction",
-                side_effect=Exception("Unexpected error"),
-            ),
-            patch.object(
-                transaction_service.category_service,
-                "record_processed_transaction",
-            ) as mock_record,
-        ):
 
-            result = await transaction_service.process_transaction(
-                sample_up_transaction
-            )
+class TestRefreshData:
+    async def test_success(self, transaction_service):
+        result = await transaction_service.refresh_data()
 
-            assert "Error processing transaction: Unexpected error" == result
-            # Verify error was recorded
-            call_args = mock_record.call_args
-            assert call_args[1]["status"] == "failed"
-            assert call_args[1]["error_message"] == "Unexpected error"
+        assert result == "Data refreshed successfully"
 
-    @pytest.mark.asyncio
-    async def test_refresh_data_success(self, transaction_service):
-        """Test successful data refresh."""
-        with patch.object(
-            transaction_service.category_service, "sync_categories_from_ynab"
-        ) as mock_sync:
-
-            result = await transaction_service.refresh_data()
-
-            assert result == "Data refreshed successfully"
-            mock_sync.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_refresh_data_failure(self, transaction_service):
-        """Test data refresh failure."""
+    async def test_failure(self, transaction_service):
         with patch.object(
             transaction_service.category_service,
             "sync_categories_from_ynab",
             side_effect=Exception("Sync failed"),
         ):
-
             result = await transaction_service.refresh_data()
 
-            assert "Failed to refresh data: Sync failed" == result
+        assert result == "Failed to refresh data: Sync failed"
+
+
+class TestCreateImportId:
+    def test_uuid_is_used_unchanged(self):
+        uuid = "01234567-89ab-cdef-0123-456789abcdef"
+
+        assert create_import_id(uuid) == uuid
+
+    def test_short_id_gets_prefix(self):
+        assert create_import_id("abc") == "up_abc"
+
+    def test_long_id_is_hashed_to_36_chars(self):
+        result = create_import_id("x" * 60)
+
+        assert len(result) == 36
+        assert not result.startswith("up_")
