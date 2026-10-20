@@ -76,3 +76,13 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 - DB model timestamp defaults use `default=datetime.now(UTC)` (evaluated once at import), not a callable.
 - No Alembic installed and no migrations; schema is created via `Base.metadata.create_all` on startup.
 - `/refresh` and `/webhook` have no auth; webhook signature (`X-Up-Authenticity-Signature`) is not verified.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as local markdown under `.scratch/` (gitignored, this clone only). See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
