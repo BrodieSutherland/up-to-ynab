@@ -1,12 +1,12 @@
 from datetime import UTC, datetime
-from typing import Dict, Optional
+from typing import Dict
 
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.connection import SessionFactory
-from database.models import PayeeCategoryMapping, ProcessedTransaction
+from database.models import PayeeCategoryMapping
 
 logger = structlog.get_logger()
 
@@ -115,69 +115,6 @@ class CategoryService:
                 exc_info=e,
             )
             raise
-
-    async def record_processed_transaction(
-        self,
-        up_transaction_id: str,
-        ynab_transaction_id: Optional[str],
-        payee_name: str,
-        amount: int,
-        transaction_date: str,
-        status: str = "processed",
-        error_message: Optional[str] = None,
-    ) -> None:
-        """Record a processed transaction to avoid duplicates."""
-        try:
-            async with self._session_factory() as session:
-                processed_tx = ProcessedTransaction(
-                    up_transaction_id=up_transaction_id,
-                    ynab_transaction_id=ynab_transaction_id,
-                    payee_name=payee_name,
-                    amount=amount,
-                    transaction_date=transaction_date,
-                    status=status,
-                    error_message=error_message,
-                )
-                session.add(processed_tx)
-                await session.commit()
-
-                logger.info(
-                    "Recorded processed transaction",
-                    up_transaction_id=up_transaction_id,
-                    payee=payee_name,
-                    status=status,
-                )
-
-        except Exception as e:
-            logger.error(
-                "Failed to record processed transaction",
-                up_transaction_id=up_transaction_id,
-                error=str(e),
-                exc_info=e,
-            )
-            # Don't raise - this is not critical for main workflow
-
-    async def is_transaction_processed(self, up_transaction_id: str) -> bool:
-        """Check if a transaction has already been processed."""
-        try:
-            async with self._session_factory() as session:
-                stmt = select(ProcessedTransaction).where(
-                    ProcessedTransaction.up_transaction_id == up_transaction_id
-                )
-                result = await session.execute(stmt)
-                existing = result.scalar_one_or_none()
-
-                return existing is not None
-
-        except Exception as e:
-            logger.error(
-                "Failed to check if transaction is processed",
-                up_transaction_id=up_transaction_id,
-                error=str(e),
-                exc_info=e,
-            )
-            # Err on the side of caution - assume not processed
-            return False
 
     async def _ensure_database_ready(self, session: AsyncSession) -> None:
         """Ensure database tables exist and are ready."""

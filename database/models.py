@@ -34,27 +34,29 @@ class PayeeCategoryMapping(Base):
         )
 
 
-class ProcessedTransaction(Base):
-    """Model for tracking processed transactions to avoid duplicates."""
+def _utcnow() -> datetime:
+    return datetime.now(UTC)
 
-    __tablename__ = "processed_transactions"
+
+class LedgerEntry(Base):
+    """One row per Up transaction: the outcome of forwarding it to YNAB."""
+
+    __tablename__ = "ledger_entries"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     up_transaction_id: Mapped[str] = mapped_column(String(50), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(20))  # forwarded, skipped, failed
     ynab_transaction_id: Mapped[Optional[str]] = mapped_column(
         String(50), nullable=True
     )
-    payee_name: Mapped[str] = mapped_column(String(255))
-    amount: Mapped[int] = mapped_column()  # In milliunits
-    transaction_date: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD
-    processed_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now(UTC))
-    status: Mapped[str] = mapped_column(
-        String(20), default="processed"
-    )  # processed, failed, skipped
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    attempts: Mapped[int] = mapped_column(default=1)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=_utcnow, onupdate=_utcnow
+    )
 
     def __repr__(self) -> str:
         return (
-            f"<ProcessedTransaction(up_id='{self.up_transaction_id}', "
-            f"payee='{self.payee_name}', status='{self.status}')>"
+            f"<LedgerEntry(up_id='{self.up_transaction_id}', "
+            f"status='{self.status}', attempts={self.attempts})>"
         )

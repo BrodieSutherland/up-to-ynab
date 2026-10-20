@@ -1,6 +1,6 @@
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, AsyncIterator, Dict
+from typing import Any, AsyncIterator, Dict, Protocol
 
 import httpx2 as httpx
 import structlog
@@ -13,17 +13,14 @@ from clients.errors import UpstreamError
 from clients.up import HttpUpClient, UpClient
 from clients.ynab import HttpYnabClient, YnabClient
 from database.connection import DatabaseManager
+from forwarding.budget_index import LegacyIndexHolder
+from forwarding.forwarder import Forwarder
+from forwarding.ledger import Failed, Forwarded, Skipped, SqlLedger
 from models.up_models import UpWebhookEvent
 from services.category_service import CategoryService
-from services.transaction_service import TransactionService
 from utils.config import Settings
 from utils.filters import TransactionFilter
 from utils.logging import setup_logging
-from utils.validation import (
-    format_validation_errors,
-    is_validation_error,
-    log_validation_error,
-)
 
 logger = structlog.get_logger()
 
@@ -37,21 +34,18 @@ class WebhookResponse(BaseModel):
     model_config = {
         "json_schema_extra": {
             "examples": [
-                {
-                    "status": "processed",
-                    "result": "Transaction created successfully in YNAB",
-                },
-                {
-                    "status": "processed",
-                    "result": "Event ignored - not a transaction creation",
-                },
-                {
-                    "status": "processed",
-                    "result": "Transaction already processed",
-                },
+                {"status": "forwarded", "result": "ynab-transaction-id"},
+                {"status": "forwarded", "result": "already in YNAB"},
+                {"status": "skipped", "result": "Internal transfer detected"},
+                {"status": "ignored", "result": "not a transaction creation"},
+                {"status": "failed", "result": "POST /transactions -> 500"},
             ]
         }
     }
+
+
+class BudgetIndex(Protocol):
+    async def rebuild(self) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -59,19 +53,21 @@ class Services:
     """The service objects the routes and startup tasks use."""
 
     up: UpClient
-    transactions: TransactionService
+    forwarder: Forwarder
+    budget_index: BudgetIndex
 
 
 def build_services(
     settings: Settings, database: DatabaseManager, up: UpClient, ynab: YnabClient
 ) -> Services:
     """Wire services from settings and clients; the only place they are built."""
-    category = CategoryService(database.get_session)
-    transaction_filter = TransactionFilter(settings.internal_transfer_strings)
-    transactions = TransactionService(
-        up, ynab, category, transaction_filter, settings.ynab_account_id
+    index = LegacyIndexHolder(
+        CategoryService(database.get_session),
+        TransactionFilter(settings.internal_transfer_strings),
+        settings.ynab_account_id,
     )
-    return Services(up=up, transactions=transactions)
+    forwarder = Forwarder(up, ynab, index, SqlLedger(database.get_session))
+    return Services(up=up, forwarder=forwarder, budget_index=index)
 
 
 @asynccontextmanager
@@ -119,7 +115,7 @@ async def ping_webhook(up: UpClient, url: str) -> bool:
 
 
 async def _run_startup_tasks(settings: Settings, services: Services) -> None:
-    """Set up the Up webhook and warm the category data."""
+    """Set up the Up webhook and build the budget index."""
     try:
         if settings.webhook_url:
             webhook_exists = await ping_webhook(services.up, settings.webhook_url)
@@ -131,9 +127,9 @@ async def _run_startup_tasks(settings: Settings, services: Services) -> None:
             logger.info("No webhook URL configured - webhook setup skipped")
 
         try:
-            await services.transactions.refresh_data()
+            await services.budget_index.rebuild()
         except Exception as e:
-            logger.error("Failed to refresh category data on startup", error=str(e))
+            logger.error("Failed to build budget index on startup", error=str(e))
 
     except Exception as e:
         logger.error(
@@ -222,6 +218,7 @@ def create_app(
     @app.post(
         "/webhook",
         tags=["webhook"],
+        response_model=WebhookResponse,
         summary="Handle Up Bank webhook events",
         description="""
         Process webhook events from Up Bank for transaction creation.
@@ -254,35 +251,35 @@ def create_app(
         3. Fetch the transaction details from Up Bank API
         4. Filter out internal transfers
         5. Map payee to YNAB category using historical data
-        6. Create the transaction in YNAB
+        6. Create the transaction in YNAB and record the outcome
+
+        Answers 503 when forwarding failed so Up redelivers the event;
+        otherwise 200 with status forwarded, skipped or ignored.
         """,
     )
-    async def handle_webhook(webhook_event: UpWebhookEvent) -> WebhookResponse:
+    async def handle_webhook(webhook_event: UpWebhookEvent) -> JSONResponse:
         """Handle incoming webhook events from Up Bank."""
-        try:
-
-            logger.info("Received event", event_type=webhook_event.data.event_type)
-
-            result = await app.state.services.transactions.process_webhook_event(
-                webhook_event
+        logger.info("Received event", event_type=webhook_event.data.event_type)
+        outcome = await app.state.services.forwarder.handle(webhook_event)
+        if isinstance(outcome, Forwarded):
+            body = WebhookResponse(
+                status="forwarded",
+                result=outcome.ynab_transaction_id or "already in YNAB",
             )
-            logger.info("Event processed", result=result)
-            return WebhookResponse(status="processed", result=result)
-
-        except Exception as exc:
-            if is_validation_error(exc):
-                log_validation_error(exc, "Webhook payload")
-                validation_summary = format_validation_errors(exc)
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(f"Invalid webhook payload - " f"{validation_summary}"),
-                )
-            else:
-                logger.error("Failed to process webhook", exc_info=exc)
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid webhook payload",
-                )
+        elif isinstance(outcome, Skipped):
+            body = WebhookResponse(status="skipped", result=outcome.reason)
+        elif isinstance(outcome, Failed):
+            body = WebhookResponse(status="failed", result=outcome.reason)
+        else:
+            body = WebhookResponse(status="ignored", result=outcome.reason)
+        return JSONResponse(
+            status_code=(
+                status.HTTP_503_SERVICE_UNAVAILABLE
+                if isinstance(outcome, Failed)
+                else status.HTTP_200_OK
+            ),
+            content=body.model_dump(),
+        )
 
     # Manual refresh endpoint
     @app.get("/refresh", tags=["admin"])
@@ -291,8 +288,8 @@ def create_app(
         try:
             logger.info("Manual refresh requested")
 
-            result = await app.state.services.transactions.refresh_data()
-            return {"status": "success", "message": result}
+            await app.state.services.budget_index.rebuild()
+            return {"status": "success", "message": "Data refreshed successfully"}
 
         except Exception as exc:
             logger.error("Failed to refresh data", exc_info=exc)

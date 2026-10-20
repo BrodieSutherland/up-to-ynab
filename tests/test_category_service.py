@@ -1,8 +1,7 @@
 import pytest
 from sqlalchemy import select
 
-from database.connection import DatabaseManager
-from database.models import PayeeCategoryMapping, ProcessedTransaction
+from database.models import PayeeCategoryMapping
 from services.category_service import CategoryService
 
 
@@ -10,9 +9,9 @@ class TestCategoryService:
     """Test cases for Category service."""
 
     @pytest.fixture
-    def category_service(self, services):
+    def category_service(self, database):
         """Real CategoryService over the in-memory database."""
-        return services.transactions.category_service
+        return CategoryService(database.get_session)
 
     @pytest.mark.asyncio
     async def test_sync_categories_from_ynab(self, category_service):
@@ -86,90 +85,3 @@ class TestCategoryService:
         assert updated.category_id == "new-category-id"
         assert updated.category_name == "New Category"
         assert updated.transaction_count == 2
-
-    @pytest.mark.asyncio
-    async def test_record_processed_transaction(self, category_service, database):
-        """Test recording processed transaction."""
-        await category_service.record_processed_transaction(
-            up_transaction_id="test-tx-id",
-            ynab_transaction_id="test-ynab-tx-id",
-            payee_name="Test Merchant",
-            amount=-12500,
-            transaction_date="2024-01-01",
-            status="processed",
-        )
-
-        async with database.get_session() as session:
-            result = await session.execute(
-                select(ProcessedTransaction).where(
-                    ProcessedTransaction.up_transaction_id == "test-tx-id"
-                )
-            )
-            processed_tx = result.scalar_one_or_none()
-
-        assert processed_tx is not None
-        assert processed_tx.ynab_transaction_id == "test-ynab-tx-id"
-        assert processed_tx.payee_name == "Test Merchant"
-        assert processed_tx.amount == -12500
-        assert processed_tx.status == "processed"
-
-    @pytest.mark.asyncio
-    async def test_record_processed_transaction_failed(
-        self, category_service, database
-    ):
-        """Test recording failed transaction with error message."""
-        await category_service.record_processed_transaction(
-            up_transaction_id="failed-tx-id",
-            ynab_transaction_id=None,
-            payee_name="Test Merchant",
-            amount=-12500,
-            transaction_date="2024-01-01",
-            status="failed",
-            error_message="API error occurred",
-        )
-
-        async with database.get_session() as session:
-            result = await session.execute(
-                select(ProcessedTransaction).where(
-                    ProcessedTransaction.up_transaction_id == "failed-tx-id"
-                )
-            )
-            processed_tx = result.scalar_one_or_none()
-
-        assert processed_tx is not None
-        assert processed_tx.ynab_transaction_id is None
-        assert processed_tx.status == "failed"
-        assert processed_tx.error_message == "API error occurred"
-
-    @pytest.mark.asyncio
-    async def test_is_transaction_processed_true(self, category_service, database):
-        """Test checking if transaction is processed - exists."""
-        async with database.get_session() as session:
-            session.add(
-                ProcessedTransaction(
-                    up_transaction_id="processed-tx-id",
-                    ynab_transaction_id="ynab-tx-id",
-                    payee_name="Test Merchant",
-                    amount=-12500,
-                    transaction_date="2024-01-01",
-                    status="processed",
-                )
-            )
-
-        assert await category_service.is_transaction_processed("processed-tx-id")
-
-    @pytest.mark.asyncio
-    async def test_is_transaction_processed_false(self, category_service):
-        """Test checking if transaction is processed - doesn't exist."""
-        assert await category_service.is_transaction_processed("new-tx-id") is False
-
-    @pytest.mark.asyncio
-    async def test_is_transaction_processed_error_handling(self, test_settings):
-        """A real database error (no tables) returns False."""
-        broken = DatabaseManager(test_settings.database_url)
-        try:
-            service = CategoryService(broken.get_session)
-
-            assert await service.is_transaction_processed("test-tx-id") is False
-        finally:
-            await broken.close()
