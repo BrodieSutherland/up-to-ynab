@@ -48,6 +48,8 @@ CMD ["sh", "-c", "exec python -m uvicorn --factory app:create_app --host 0.0.0.0
 
 # runtime: the default (last) stage
 FROM base AS runtime
+# pip is not needed at runtime; dropping it clears Trivy findings in its vendored libs
+RUN python -m pip uninstall -y pip
 COPY . .
 USER 1000:1000
 # hadolint ignore=DL3025
