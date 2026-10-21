@@ -15,7 +15,7 @@ fi
 
 # Validate required environment variables
 source .env
-required_vars=("UP_API_TOKEN" "YNAB_API_TOKEN" "YNAB_BUDGET_ID" "WEBHOOK_URL")
+required_vars=("UP_API_TOKEN" "YNAB_API_TOKEN" "YNAB_BUDGET_ID")
 
 for var in "${required_vars[@]}"; do
     if [ -z "${!var}" ]; then
@@ -24,18 +24,22 @@ for var in "${required_vars[@]}"; do
     fi
 done
 
+if [ -z "${WEBHOOK_URL}" ]; then
+    echo "⚠️  WEBHOOK_URL is not set; Up webhook registration will be skipped"
+fi
+
 # Create data directory if it doesn't exist
 mkdir -p data
 
 # Start production environment
 echo "Starting production containers..."
-docker-compose up --build -d
+docker compose up --build -d
 
 echo "✓ Production environment started!"
 echo ""
 echo "Services:"
-echo "  - API: http://localhost:5001"
-echo "  - Health: http://localhost:5001/health"
+echo "  - API: http://localhost:${PORT:-5001}"
+echo "  - Health: http://localhost:${PORT:-5001}/health"
 echo ""
-echo "To view logs: docker-compose logs -f"
-echo "To stop: docker-compose down"
+echo "To view logs: docker compose logs -f"
+echo "To stop: docker compose down"

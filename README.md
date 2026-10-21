@@ -95,7 +95,7 @@ Transactions already forwarded by 2.x are not re-sent. The YNAB `import_id` is n
 | `WEBHOOK_URL` | ❌ | - | Public URL ending `/webhook`; if unset, webhook registration is skipped |
 | `UP_BASE_URL` | ❌ | https://api.up.com.au/api/v1/ | Up Bank API base URL |
 | `YNAB_BASE_URL` | ❌ | https://api.youneedabudget.com/v1/ | YNAB API base URL |
-| `PORT` | ❌ | 5001 | Server port |
+| `PORT` | ❌ | 5001 | port the container listens on (Docker/compose); pass --port when running uvicorn yourself |
 | `DEBUG_MODE` | ❌ | false | Enable debug logging |
 | `DATABASE_URL` | ❌ | sqlite+aiosqlite:///./up_to_ynab.db | Database connection URL |
 
@@ -132,12 +132,13 @@ Up webhook ──▶ /webhook ──▶ Forwarder
 
 ### Docker Compose (Production)
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Docker Compose (Development)
+Builds the `dev` target of the Dockerfile, with hot reload and the repo bind-mounted at `/app`.
 ```bash
-docker-compose -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.dev.yml up -d
 ```
 
 ### Manual Installation
@@ -212,7 +213,7 @@ black .
 isort .
 
 # Lint code
-flake8 --extend-ignore=E203,W503 .
+flake8 .
 ```
 
 ## Contributing

@@ -18,11 +18,11 @@ pip install -r requirements-dev.txt   # runtime + test + lint tools
 pytest -q                          # full suite, ~1s, no network needed
 pytest tests/test_forwarder.py -v
 pytest -q --cov --cov-branch   # coverage gate
-black . && isort . && flake8 --extend-ignore=E203,W503 .   # must pass: CI runs --check
+black . && isort . && flake8 .   # must pass: CI runs --check; .flake8 holds the flags
 python -m uvicorn --factory app:create_app --port 5001 --reload             # needs .env (see .env.example)
 ```
 
-CI (`.github/workflows/ci.yml`) runs on pushes to `main`/`develop`, `v*` tags, and PRs into `main` and `develop`. It runs tests (Python 3.11 and 3.14) with an app-only branch coverage gate (`[tool.coverage]` in `pyproject.toml`; `fail_under` is 97; new top-level packages must be added to coverage `source`) and black/isort/flake8 checks, a Docker build + `/health` smoke test, and Trivy. CodeQL runs from `.github/workflows/codeql.yml` (advanced setup, so it also covers Dependabot PRs; repo-level "default setup" must stay disabled or the uploads conflict). The multi-arch image (`docker-publish.yml`, a reusable workflow called as the `image` job) is built on PRs without pushing, and is published to Docker Hub only from `main` / `v*` tags after all checks pass. The metadata step uses `flavor: latest=false`, so only `main` moves `latest`. `CI OK` is the single required status check. Dependabot patch PRs auto-merge via a GitHub App token (secrets `AUTOMERGE_APP_ID`, `AUTOMERGE_APP_PRIVATE_KEY`) once `CI OK` passes.
+CI (`.github/workflows/ci.yml`) runs on pushes to `main`/`develop`, `v*` tags, and PRs into `main` and `develop`. Jobs run in parallel: a separate `lint` job (black/isort/flake8 on Python 3.14), `test` (Python 3.11 and 3.14) with an app-only branch coverage gate (`[tool.coverage]` in `pyproject.toml`; `fail_under` is 97; new top-level packages must be added to coverage `source`), `docker-build` and `security-scan`. `docker-build` builds the `runtime` target through `build-push-action` (its own `smoke` gha cache scope), runs it with `PORT=8080` and requires the image `HEALTHCHECK` to report healthy, then runs a Trivy image scan. `security-scan` runs a Trivy fs scan. Both Trivy scans are report-only (SARIF uploads). CodeQL runs from `.github/workflows/codeql.yml` on `main` and `develop` (advanced setup, so it also covers Dependabot PRs; repo-level "default setup" must stay disabled or the uploads conflict). The multi-arch image (`docker-publish.yml`, a reusable workflow called as the `image` job) is built on PRs without pushing (the Dockerfile's `deps` stage resolves wheels natively for each target arch, so no QEMU pip), and is published to Docker Hub only from `main` / `v*` tags after all checks pass. The metadata step uses `flavor: latest=false`, so only `main` moves `latest`. `CI OK` is the single required status check. Dependabot patch PRs squash-merge automatically via a GitHub App token (secrets `AUTOMERGE_APP_ID`, `AUTOMERGE_APP_PRIVATE_KEY`) once `CI OK` passes.
 
 ## Code navigation & editing (Serena MCP)
 
@@ -73,7 +73,7 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 ## Dependencies
 
 - `pyproject.toml`, `requirements.txt` and `requirements-dev.txt` all use exact `==` pins and must match (Dependabot bumps them together). Update all of them when adding or changing a dependency.
-- `requirements.txt` is runtime-only and is what Docker installs. Tests, coverage and lint tools (pytest*, black, isort, flake8) live in `requirements-dev.txt` (`-r requirements.txt` plus dev pins), which CI and `scripts/run-tests.sh` install.
+- `requirements.txt` is runtime-only and is what Docker installs. Docker installs wheels only (`--only-binary`), so a dependency without cp314 manylinux wheels for both amd64 and arm64 fails the build. A new top-level package must also be added to the `.dockerignore` allowlist (and coverage `source`). Tests, coverage and lint tools (pytest*, black, isort, flake8) live in `requirements-dev.txt` (`-r requirements.txt` plus dev pins), which CI and `scripts/run-tests.sh` install.
 - Python 3.11 is the minimum (`requires-python`, black target py311); code uses `datetime.UTC`. CI runs the test job on 3.11 and 3.14. Dockerfile uses 3.14.
 
 ## Known gaps (don't assume these work)
@@ -84,7 +84,6 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 - Only `TRANSACTION_CREATED` is acted on; `TRANSACTION_DELETED` / `SETTLED` are ignored, so cancelled holds stay in YNAB.
 - Cleared is always uncleared (`cleared_status`, #111).
 - An Up account with no matching YNAB account is skipped and never retried.
-- Docker `CMD` ignores `PORT`, and `app.json` is a stale Heroku file.
 
 ## Agent skills
 
