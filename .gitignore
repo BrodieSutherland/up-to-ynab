@@ -69,3 +69,6 @@ transaction_example.json
 Requirements.md
 # Local secrets
 keys.txt
+
+# Local issue tracker (see docs/agents/issue-tracker.md)
+.scratch/
