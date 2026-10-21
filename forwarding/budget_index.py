@@ -1,7 +1,7 @@
 import asyncio
 import time
 from collections.abc import Awaitable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Callable, Mapping
 
@@ -46,7 +46,9 @@ class BudgetIndex:
     """Routing data: YNAB account per Up account, and category per payee."""
 
     accounts: Mapping[str, YnabAccountRef | NotInYnab]
-    category_by_payee: Mapping[str, str] = MappingProxyType({})
+    category_by_payee: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
     def account(
         self, up_account_id: str
