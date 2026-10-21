@@ -1,0 +1,79 @@
+{
+  "data": {
+    "type": "transactions",
+    "id": "synthetic-2",
+    "attributes": {
+      "status": "SETTLED",
+      "rawText": "Raw text 12",
+      "description": "Payee 12",
+      "message": null,
+      "isCategorizable": true,
+      "holdInfo": null,
+      "roundUp": null,
+      "cashback": null,
+      "amount": {
+        "currencyCode": "AUD",
+        "value": "-50.00",
+        "valueInBaseUnits": -5000
+      },
+      "foreignAmount": null,
+      "cardPurchaseMethod": {
+        "method": "CARD_DETAILS",
+        "cardNumberSuffix": "0000"
+      },
+      "settledAt": "2026-10-21T09:00:00+11:00",
+      "createdAt": "2026-10-18T08:00:00+11:00",
+      "transactionType": "Purchase",
+      "note": null,
+      "performingCustomer": {
+        "displayName": "Customer 1"
+      },
+      "deepLinkURL": "up://transaction/VHJhbnNhY3Rpb24tMjk3MjI3NzIzNg=="
+    },
+    "relationships": {
+      "account": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-1"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-1"
+        }
+      },
+      "transferAccount": {
+        "data": null
+      },
+      "category": {
+        "data": {
+          "type": "categories",
+          "id": "hobbies"
+        },
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-1/relationships/category",
+          "related": "https://api.up.com.au/api/v1/categories/hobbies"
+        }
+      },
+      "parentCategory": {
+        "data": {
+          "type": "categories",
+          "id": "good-life"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/categories/good-life"
+        }
+      },
+      "tags": {
+        "data": [],
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-1/relationships/tags"
+        }
+      },
+      "attachment": {
+        "data": null
+      }
+    },
+    "links": {
+      "self": "https://api.up.com.au/api/v1/transactions/synthetic-2"
+    }
+  }
+}

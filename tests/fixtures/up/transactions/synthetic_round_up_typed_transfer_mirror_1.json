@@ -1,0 +1,67 @@
+{
+  "data": {
+    "type": "transactions",
+    "id": "synthetic-4",
+    "attributes": {
+      "status": "SETTLED",
+      "rawText": null,
+      "description": "Transfer from Spending",
+      "message": "",
+      "isCategorizable": false,
+      "holdInfo": null,
+      "roundUp": null,
+      "cashback": null,
+      "amount": {
+        "currencyCode": "AUD",
+        "value": "470.53",
+        "valueInBaseUnits": 47053
+      },
+      "foreignAmount": null,
+      "cardPurchaseMethod": null,
+      "settledAt": "2026-07-19T21:05:44+10:00",
+      "createdAt": "2026-07-19T21:05:44+10:00",
+      "transactionType": "Round Up",
+      "note": null,
+      "performingCustomer": null,
+      "deepLinkURL": "up://transaction/VHJhbnNhY3Rpb24tMjc5MTk0MzY4OQ=="
+    },
+    "relationships": {
+      "account": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-4"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-4"
+        }
+      },
+      "transferAccount": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-1"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-1"
+        }
+      },
+      "category": {
+        "data": null
+      },
+      "parentCategory": {
+        "data": null
+      },
+      "tags": {
+        "data": [],
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/synthetic-4/relationships/tags"
+        }
+      },
+      "attachment": {
+        "data": null
+      }
+    },
+    "links": {
+      "self": "https://api.up.com.au/api/v1/transactions/synthetic-4"
+    }
+  }
+}

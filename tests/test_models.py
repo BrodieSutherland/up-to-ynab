@@ -68,36 +68,6 @@ class TestUpModels:
         assert transaction.id == "test-transaction-id"
         assert transaction.payee == "Test Merchant"
         assert transaction.amount_milliunits == -12500  # -1250 * 10
-        assert transaction.date == "2024-01-01"
-
-    def test_up_transaction_internal_transfer_detection(
-        self, sample_up_transaction_data
-    ):
-        """Test internal transfer detection in UpTransaction."""
-        # Modify transaction to be internal transfer
-        transaction_data = sample_up_transaction_data["data"].copy()
-        transaction_data["attributes"]["description"] = "Transfer to Savings Account"
-
-        transaction = UpTransaction(**transaction_data)
-
-        # Note: This test depends on the settings being available
-        # In a real test, we'd mock the settings
-        # For now, just verify the transaction was created successfully
-        assert transaction.payee == "Transfer to Savings Account"
-
-    def test_up_transaction_date_formatting(self, sample_up_transaction_data):
-        """Test transaction date formatting."""
-        # Test with settled_at present
-        transaction = UpTransaction(**sample_up_transaction_data["data"])
-        assert transaction.date == "2024-01-01"
-
-        # Test with only created_at (no settled_at)
-        transaction_data = sample_up_transaction_data["data"].copy()
-        transaction_data["attributes"]["settledAt"] = None
-        transaction_data["attributes"]["createdAt"] = "2024-01-02T15:30:00+00:00"
-
-        transaction = UpTransaction(**transaction_data)
-        assert transaction.date == "2024-01-02"
 
     def test_up_transaction_datetime_parsing(self):
         """Test datetime parsing in transaction attributes."""
@@ -140,14 +110,15 @@ class TestYnabModels:
             memo="Test transaction",
             amount=-12500,
             date="2024-01-01",
-            import_id="up_test-transaction-id",
+            cleared="uncleared",
+            import_id="test-transaction-id",
         )
 
         assert transaction_detail.account_id == "test-account-id"
         assert transaction_detail.payee_name == "Test Merchant"
         assert transaction_detail.category_id == "test-category-id"
         assert transaction_detail.amount == -12500
-        assert transaction_detail.cleared == "uncleared"  # default value
+        assert transaction_detail.cleared == "uncleared"
         assert transaction_detail.approved is True  # default value
 
     def test_ynab_transaction_request_creation(self):
@@ -157,6 +128,7 @@ class TestYnabModels:
             payee_name="Test Merchant",
             amount=-12500,
             date="2024-01-01",
+            cleared="uncleared",
         )
 
         transaction_request = YnabTransactionRequest(transaction=transaction_detail)
@@ -172,7 +144,7 @@ class TestYnabModels:
         assert transaction_response.id == "test-ynab-transaction-id"
         assert transaction_response.date == "2024-01-01"
         assert transaction_response.amount == -12500
-        assert transaction_response.import_id == "up_test-transaction-id"
+        assert transaction_response.import_id == "test-transaction-id"
         assert transaction_response.deleted is False
 
     def test_ynab_category_creation(self):
@@ -233,15 +205,16 @@ class TestModelIntegration:
             payee_name=up_transaction.payee,
             memo=up_transaction.attributes.raw_text,
             amount=up_transaction.amount_milliunits,
-            date=up_transaction.date,
-            import_id=f"up_{up_transaction.id}",
+            date="2024-01-01",
+            cleared="uncleared",
+            import_id=up_transaction.id,
         )
 
         assert ynab_detail.payee_name == "Test Merchant"
         assert ynab_detail.memo == "Test Purchase"
         assert ynab_detail.amount == -12500
         assert ynab_detail.date == "2024-01-01"
-        assert ynab_detail.import_id == "up_test-transaction-id"
+        assert ynab_detail.import_id == "test-transaction-id"
 
     def test_model_serialization(self, sample_up_webhook_event_data):
         """Test model serialization for API requests."""
@@ -258,6 +231,7 @@ class TestModelIntegration:
         with pytest.raises(ValueError):
             # Missing required fields should raise validation error
             YnabTransactionDetail(
-                account_id="test-account-id"
+                account_id="test-account-id",
+                cleared="uncleared",
                 # Missing required amount and date fields
             )

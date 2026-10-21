@@ -1,5 +1,5 @@
-from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from typing import AsyncGenerator, Callable
 
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
@@ -8,26 +8,24 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from utils.config import get_settings
-
 from .models import Base
+
+SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
 
 class DatabaseManager:
     """Database connection and session management."""
 
-    def __init__(self):
-        self.settings = get_settings()
+    def __init__(self, database_url: str, echo: bool = False):
+        self.database_url = database_url
         self.engine = create_async_engine(
-            self.settings.database_url,
+            database_url,
             # SQLite specific settings
-            poolclass=(StaticPool if "sqlite" in self.settings.database_url else None),
+            poolclass=(StaticPool if "sqlite" in database_url else None),
             connect_args=(
-                {"check_same_thread": False}
-                if "sqlite" in self.settings.database_url
-                else {}
+                {"check_same_thread": False} if "sqlite" in database_url else {}
             ),
-            echo=self.settings.debug_mode,
+            echo=echo,
         )
         self.async_session = async_sessionmaker(
             self.engine,
@@ -54,7 +52,3 @@ class DatabaseManager:
     async def close(self) -> None:
         """Close the database connection."""
         await self.engine.dispose()
-
-
-# Global database manager instance
-db_manager = DatabaseManager()

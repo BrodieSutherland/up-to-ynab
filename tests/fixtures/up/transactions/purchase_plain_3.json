@@ -1,0 +1,61 @@
+{
+  "data": {
+    "type": "transactions",
+    "id": "transactions-40",
+    "attributes": {
+      "status": "SETTLED",
+      "rawText": null,
+      "description": "Payee 9",
+      "message": null,
+      "isCategorizable": false,
+      "holdInfo": null,
+      "roundUp": null,
+      "cashback": null,
+      "amount": {
+        "currencyCode": "AUD",
+        "value": "49.19",
+        "valueInBaseUnits": 4919
+      },
+      "foreignAmount": null,
+      "cardPurchaseMethod": null,
+      "settledAt": "2026-10-01T02:41:47+10:00",
+      "createdAt": "2026-10-01T02:41:47+10:00",
+      "transactionType": "Payee 9",
+      "note": null,
+      "performingCustomer": null,
+      "deepLinkURL": "up://transaction/VHJhbnNhY3Rpb24tMjkzMTIyMDI0NA=="
+    },
+    "relationships": {
+      "account": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-4"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-4"
+        }
+      },
+      "transferAccount": {
+        "data": null
+      },
+      "category": {
+        "data": null
+      },
+      "parentCategory": {
+        "data": null
+      },
+      "tags": {
+        "data": [],
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-40/relationships/tags"
+        }
+      },
+      "attachment": {
+        "data": null
+      }
+    },
+    "links": {
+      "self": "https://api.up.com.au/api/v1/transactions/transactions-40"
+    }
+  }
+}

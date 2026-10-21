@@ -160,30 +160,31 @@ class UpTransaction(BaseModel):
         return self.attributes.description
 
     @property
+    def account_id(self) -> str:
+        """Get the id of the Up account this transaction belongs to."""
+        return self.relationships.account["data"]["id"]
+
+    @property
+    def transfer_account_id(self) -> str | None:
+        """Id of the other Up account in a Transfer, or None."""
+        data = (self.relationships.transfer_account or {}).get("data")
+        return data["id"] if data else None
+
+    @property
     def amount_milliunits(self) -> int:
         """Get amount in milliunits for YNAB (multiply by 10)."""
         return self.attributes.amount.value_in_base_units * 10
-
-    @property
-    def is_internal_transfer(self) -> bool:
-        """Check if this is an internal transfer."""
-        from utils.config import get_settings
-
-        settings = get_settings()
-
-        return any(
-            transfer_string in self.payee
-            for transfer_string in settings.internal_transfer_strings
-        )
-
-    @property
-    def date(self) -> str:
-        """Get transaction date in YNAB format (YYYY-MM-DD)."""
-        date_to_use = self.attributes.settled_at or self.attributes.created_at
-        return date_to_use.strftime("%Y-%m-%d")
 
 
 class UpTransactionResponse(BaseModel):
     """Up API transaction response model."""
 
     data: UpTransaction
+
+
+class UpWebhook(BaseModel):
+    """An Up webhook subscription."""
+
+    id: str
+    url: str
+    description: Optional[str] = None
