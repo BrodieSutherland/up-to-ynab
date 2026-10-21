@@ -8,12 +8,12 @@ cd "$(dirname "$0")/.."
 
 # Build production image
 echo "Building production image..."
-docker build -t up-to-ynab:latest -f Dockerfile .
+docker build -t up-to-ynab:latest .
 echo "✓ Production image built: up-to-ynab:latest"
 
 # Build development image
 echo "Building development image..."
-docker build -t up-to-ynab:dev -f Dockerfile.dev .
+docker build --target dev -t up-to-ynab:dev .
 echo "✓ Development image built: up-to-ynab:dev"
 
 # Optional: Build with version tag if provided

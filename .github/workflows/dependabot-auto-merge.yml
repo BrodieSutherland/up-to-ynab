@@ -33,7 +33,7 @@ jobs:
 
     - name: Enable auto-merge for patch updates
       if: steps.metadata.outputs.update-type == 'version-update:semver-patch'
-      run: gh pr merge --auto --merge "$PR_URL"
+      run: gh pr merge --auto --squash "$PR_URL"
       env:
         PR_URL: ${{ github.event.pull_request.html_url }}
         # App token so the eventual merge triggers CI + publish on main;

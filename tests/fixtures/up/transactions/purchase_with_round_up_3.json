@@ -1,0 +1,71 @@
+{
+  "data": {
+    "type": "transactions",
+    "id": "transactions-8",
+    "attributes": {
+      "status": "SETTLED",
+      "rawText": "Raw text 4",
+      "description": "Payee 5",
+      "message": null,
+      "isCategorizable": true,
+      "holdInfo": null,
+      "roundUp": {
+        "amount": {
+          "currencyCode": "AUD",
+          "value": "-8.10",
+          "valueInBaseUnits": -810
+        },
+        "boostPortion": null
+      },
+      "cashback": null,
+      "amount": {
+        "currencyCode": "AUD",
+        "value": "-85.34",
+        "valueInBaseUnits": -8534
+      },
+      "foreignAmount": null,
+      "cardPurchaseMethod": null,
+      "settledAt": "2026-10-15T16:24:00+11:00",
+      "createdAt": "2026-10-15T16:24:00+11:00",
+      "transactionType": "Direct Debit",
+      "note": null,
+      "performingCustomer": null,
+      "deepLinkURL": "up://transaction/VHJhbnNhY3Rpb24tMjk2MjU4MzIyNw=="
+    },
+    "relationships": {
+      "account": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-1"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-1"
+        }
+      },
+      "transferAccount": {
+        "data": null
+      },
+      "category": {
+        "data": null,
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-8/relationships/category"
+        }
+      },
+      "parentCategory": {
+        "data": null
+      },
+      "tags": {
+        "data": [],
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-8/relationships/tags"
+        }
+      },
+      "attachment": {
+        "data": null
+      }
+    },
+    "links": {
+      "self": "https://api.up.com.au/api/v1/transactions/transactions-8"
+    }
+  }
+}

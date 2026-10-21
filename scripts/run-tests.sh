@@ -3,22 +3,26 @@ set -e
 
 echo "Running UP to YNAB tests..."
 
-# Change to script directory
+# Change to repo root
 cd "$(dirname "$0")/.."
 
-# Activate virtual environment if it exists
-if [ -d "venv" ]; then
-    source venv/bin/activate
+# Activate virtual environment
+if [ -f ".venv/bin/activate" ]; then
+    source .venv/bin/activate
     echo "✓ Virtual environment activated"
 fi
 
 # Install dependencies
 echo "Installing dependencies..."
-pip install -r requirements-dev.txt
+if command -v uv >/dev/null 2>&1; then
+    uv pip install -r requirements-dev.txt
+else
+    python -m pip install -r requirements-dev.txt
+fi
 
 # Run tests with coverage
 echo "Running tests with coverage..."
-pytest tests/ -v --tb=short --cov=. --cov-report=term-missing --cov-report=html
+pytest -q --cov --cov-report=term-missing --cov-report=html
 
 echo "✓ Tests completed successfully!"
 echo "Coverage report generated in htmlcov/index.html"

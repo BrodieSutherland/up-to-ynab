@@ -17,16 +17,21 @@ fi
 # Create data directory if it doesn't exist
 mkdir -p data
 
+# Pick up PORT from .env for the URLs printed below
+set -a
+source .env
+set +a
+
 # Start development environment
 echo "Starting development containers..."
-docker-compose -f docker-compose.dev.yml up --build -d
+docker compose -f docker-compose.dev.yml up --build -d
 
 echo "✓ Development environment started!"
 echo ""
 echo "Services:"
-echo "  - API: http://localhost:5001"
-echo "  - Health: http://localhost:5001/health"
-echo "  - Docs: http://localhost:5001/docs"
+echo "  - API: http://localhost:${PORT:-5001}"
+echo "  - Health: http://localhost:${PORT:-5001}/health"
+echo "  - Docs: http://localhost:${PORT:-5001}/docs"
 echo ""
-echo "To view logs: docker-compose -f docker-compose.dev.yml logs -f"
-echo "To stop: docker-compose -f docker-compose.dev.yml down"
+echo "To view logs: docker compose -f docker-compose.dev.yml logs -f"
+echo "To stop: docker compose -f docker-compose.dev.yml down"

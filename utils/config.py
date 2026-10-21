@@ -1,8 +1,9 @@
-from functools import lru_cache
-from typing import Optional
+from typing import Annotated, Optional
 
-from pydantic import Field
+from pydantic import Field, StringConstraints
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+RequiredStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
 class Settings(BaseSettings):
@@ -13,6 +14,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        hide_input_in_errors=True,
     )
 
     # Server configuration
@@ -20,7 +22,7 @@ class Settings(BaseSettings):
     debug_mode: bool = Field(default=False, description="Enable debug mode")
 
     # Up Bank API configuration
-    up_api_token: str = Field(..., description="Up Bank API token")
+    up_api_token: RequiredStr = Field(..., description="Up Bank API token")
     up_base_url: str = Field(
         default="https://api.up.com.au/api/v1/",
         description="Up Bank API base URL",
@@ -30,9 +32,8 @@ class Settings(BaseSettings):
     )
 
     # YNAB API configuration
-    ynab_api_token: str = Field(..., description="YNAB API token")
-    ynab_budget_id: str = Field(..., description="YNAB budget ID")
-    ynab_account_id: str = Field(..., description="YNAB account ID")
+    ynab_api_token: RequiredStr = Field(..., description="YNAB API token")
+    ynab_budget_id: RequiredStr = Field(..., description="YNAB budget ID")
     ynab_base_url: str = Field(
         default="https://api.youneedabudget.com/v1/",
         description="YNAB API base URL",
@@ -44,19 +45,22 @@ class Settings(BaseSettings):
         description="Database URL",
     )
 
-    # Transfer filtering
-    internal_transfer_strings: list[str] = Field(
-        default=[
-            "Transfer to ",
-            "Cover to ",
-            "Quick save transfer to ",
-            "Forward to ",
-        ],
-        description="Strings that identify internal transfers to exclude",
+    # Removed in 3.0.0; read only so startup can warn that they are ignored.
+    legacy_ynab_account_id: Optional[str] = Field(
+        None, validation_alias="ynab_account_id", exclude=True, repr=False
+    )
+    legacy_internal_transfer_strings: Optional[str] = Field(
+        None,
+        validation_alias="internal_transfer_strings",
+        exclude=True,
+        repr=False,
     )
 
-
-@lru_cache()
-def get_settings() -> Settings:
-    """Get cached application settings."""
-    return Settings()
+    def ignored_env_vars(self) -> list[str]:
+        """Names of removed settings that are still set."""
+        names = []
+        if self.legacy_ynab_account_id is not None:
+            names.append("YNAB_ACCOUNT_ID")
+        if self.legacy_internal_transfer_strings is not None:
+            names.append("INTERNAL_TRANSFER_STRINGS")
+        return names
