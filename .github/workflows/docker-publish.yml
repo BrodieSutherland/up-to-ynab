@@ -57,6 +57,8 @@ jobs:
       uses: docker/metadata-action@v6
       with:
         images: ${{ env.IMAGE }}
+        flavor: |
+          latest=false
         tags: |
           type=ref,event=branch
           type=ref,event=pr
@@ -70,6 +72,7 @@ jobs:
       with:
         context: .
         file: ./Dockerfile
+        target: runtime
         push: ${{ steps.decide.outputs.push == 'true' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}

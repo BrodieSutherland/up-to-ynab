@@ -1,0 +1,79 @@
+{
+  "data": {
+    "type": "transactions",
+    "id": "transactions-39",
+    "attributes": {
+      "status": "SETTLED",
+      "rawText": "Raw text 7",
+      "description": "Payee 8",
+      "message": null,
+      "isCategorizable": true,
+      "holdInfo": null,
+      "roundUp": null,
+      "cashback": null,
+      "amount": {
+        "currencyCode": "AUD",
+        "value": "-292.24",
+        "valueInBaseUnits": -29224
+      },
+      "foreignAmount": null,
+      "cardPurchaseMethod": {
+        "method": "CARD_DETAILS",
+        "cardNumberSuffix": "0000"
+      },
+      "settledAt": "2026-10-01T06:07:40+10:00",
+      "createdAt": "2026-10-01T06:07:40+10:00",
+      "transactionType": "Purchase",
+      "note": null,
+      "performingCustomer": {
+        "displayName": "Customer 1"
+      },
+      "deepLinkURL": "up://transaction/VHJhbnNhY3Rpb24tMjkzMjI4ODIwNA=="
+    },
+    "relationships": {
+      "account": {
+        "data": {
+          "type": "accounts",
+          "id": "accounts-1"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/accounts/accounts-1"
+        }
+      },
+      "transferAccount": {
+        "data": null
+      },
+      "category": {
+        "data": {
+          "type": "categories",
+          "id": "pets"
+        },
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-39/relationships/category",
+          "related": "https://api.up.com.au/api/v1/categories/pets"
+        }
+      },
+      "parentCategory": {
+        "data": {
+          "type": "categories",
+          "id": "home"
+        },
+        "links": {
+          "related": "https://api.up.com.au/api/v1/categories/home"
+        }
+      },
+      "tags": {
+        "data": [],
+        "links": {
+          "self": "https://api.up.com.au/api/v1/transactions/transactions-39/relationships/tags"
+        }
+      },
+      "attachment": {
+        "data": null
+      }
+    },
+    "links": {
+      "self": "https://api.up.com.au/api/v1/transactions/transactions-39"
+    }
+  }
+}

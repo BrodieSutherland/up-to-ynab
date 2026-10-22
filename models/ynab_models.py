@@ -8,12 +8,13 @@ class YnabTransactionDetail(BaseModel):
     """YNAB transaction detail for creation."""
 
     account_id: str
+    payee_id: Optional[str] = None
     payee_name: Optional[str] = None
     category_id: Optional[str] = None
     memo: Optional[str] = None
     amount: int  # In milliunits
     date: str  # YYYY-MM-DD format
-    cleared: str = "uncleared"  # cleared, uncleared, reconciled
+    cleared: str  # cleared, uncleared, reconciled
     approved: bool = True
     flag_color: Optional[str] = None
     import_id: Optional[str] = None
@@ -132,3 +133,16 @@ class YnabBudget(BaseModel):
     payees: List[YnabPayee]
     categories: List[YnabCategory]
     category_groups: List[YnabCategoryGroup]
+
+
+class YnabTransaction(BaseModel):
+    """A transaction as listed by YNAB (only the fields the app reads)."""
+
+    id: str
+    date: str
+    amount: int
+    payee_name: Optional[str] = None
+    category_id: Optional[str] = None
+    transfer_account_id: Optional[str] = None
+    deleted: bool
+    subtransactions: list[dict] = []

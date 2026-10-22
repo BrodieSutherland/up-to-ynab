@@ -3,14 +3,12 @@ updates:
 
   # Python dependencies
   - package-ecosystem: "pip"
-    directory: ""
+    directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 10
-    reviewers:
-      - "BrodieSutherland"
     assignees:
       - "BrodieSutherland"
     commit-message:
@@ -19,14 +17,12 @@ updates:
 
   # Docker dependencies
   - package-ecosystem: "docker"
-    directory: ""
+    directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 5
-    reviewers:
-      - "BrodieSutherland"
     assignees:
       - "BrodieSutherland"
     commit-message:
@@ -35,14 +31,12 @@ updates:
 
   # GitHub Actions dependencies
   - package-ecosystem: "github-actions"
-    directory: ""
+    directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
       time: "09:00"
     open-pull-requests-limit: 5
-    reviewers:
-      - "BrodieSutherland"
     assignees:
       - "BrodieSutherland"
     commit-message:
