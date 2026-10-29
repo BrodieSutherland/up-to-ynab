@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Protocol
 
 import structlog
@@ -24,6 +25,7 @@ class Skipped:
 
     up_transaction_id: str
     reason: str
+    reason_code: str
 
 
 @dataclass(frozen=True)
@@ -34,28 +36,100 @@ class Failed:
     reason: str
 
 
-Outcome = Forwarded | Skipped | Failed
+@dataclass(frozen=True)
+class Deleted:
+    """Up deleted a forwarded transaction; its YNAB copy was deleted or flagged."""
+
+    up_transaction_id: str
+    ynab_transaction_id: str
+    flagged: bool
+    reason: str
+
+
+Outcome = Forwarded | Skipped | Failed | Deleted
+
+
+@dataclass(frozen=True)
+class LedgerState:
+    """What the Ledger holds for an Up transaction."""
+
+    status: str  # forwarded, skipped, failed or deleted
+    ynab_transaction_id: str | None
+    reason_code: str | None = None
+
+
+@dataclass(frozen=True)
+class LedgerEntryView:
+    """A stored Ledger row, for inspection (updated_at is always UTC-aware)."""
+
+    up_transaction_id: str
+    status: str
+    reason: str | None
+    reason_code: str | None
+    ynab_transaction_id: str | None
+    attempts: int
+    updated_at: datetime
+
+
+class LedgerReader(Protocol):
+    """Read-only view of the Ledger."""
+
+    async def entry(self, up_transaction_id: str) -> LedgerEntryView | None:
+        """The stored row, or None if nothing is recorded."""
+        ...
+
+
+# Skips a backfill (and only a backfill) may retry: the account may have been
+# added to YNAB since.
+RETRYABLE_SKIP_CODES = frozenset({"account_not_in_ynab"})
+
+
+def backfill_retryable(state: LedgerState | None) -> bool:
+    """True if a backfill should (re)try this transaction."""
+    if state is None or state.status == "failed":
+        return True
+    return state.status == "skipped" and state.reason_code in RETRYABLE_SKIP_CODES
+
+
+def overwritable(status: str, reason_code: str | None) -> bool:
+    """True if record() may replace a stored row with a new outcome."""
+    return status == "failed" or (
+        status == "skipped" and reason_code in RETRYABLE_SKIP_CODES
+    )
 
 
 class Ledger(Protocol):
     """Record of what happened to each Up transaction."""
 
     async def is_handled(self, up_transaction_id: str) -> bool:
-        """True once forwarded or skipped; a failed transaction is not handled."""
+        """True once forwarded, skipped or deleted; a failed one is not handled."""
+        ...
+
+    async def lookup(self, up_transaction_id: str) -> LedgerState | None:
+        """The stored state, or None if nothing is recorded."""
         ...
 
     async def record(self, outcome: Outcome) -> None:
-        """Store an outcome. A handled transaction is never overwritten."""
+        """Store an outcome. A handled transaction is never overwritten, except
+        that a forwarded one becomes deleted (a Deleted for any other row is
+        not recorded) and a skipped one with a retryable reason_code
+        (account_not_in_ynab) becomes forwarded or skipped. A failed outcome
+        is not recorded over such a skip."""
         ...
 
 
-def _fields(outcome: Outcome) -> tuple[str, str | None, str | None]:
-    """Return (status, ynab_transaction_id, reason) for an outcome."""
+def _fields(outcome: Outcome) -> tuple[str, str | None, str | None, str | None]:
+    """Return (status, ynab_transaction_id, reason, reason_code) for an outcome.
+
+    A Deleted keeps the stored reason_code, so it reports None here.
+    """
     if isinstance(outcome, Forwarded):
-        return "forwarded", outcome.ynab_transaction_id, None
+        return "forwarded", outcome.ynab_transaction_id, None, None
     if isinstance(outcome, Skipped):
-        return "skipped", None, outcome.reason
-    return "failed", None, outcome.reason
+        return "skipped", None, outcome.reason, outcome.reason_code
+    if isinstance(outcome, Deleted):
+        return "deleted", outcome.ynab_transaction_id, outcome.reason, None
+    return "failed", None, outcome.reason, None
 
 
 class SqlLedger:
@@ -77,6 +151,31 @@ class SqlLedger:
             entry = await self._entry(session, up_transaction_id)
         return entry is not None and entry.status != "failed"
 
+    async def lookup(self, up_transaction_id: str) -> LedgerState | None:
+        async with self._session_factory() as session:
+            entry = await self._entry(session, up_transaction_id)
+        if entry is None:
+            return None
+        return LedgerState(entry.status, entry.ynab_transaction_id, entry.reason_code)
+
+    async def entry(self, up_transaction_id: str) -> LedgerEntryView | None:
+        async with self._session_factory() as session:
+            row = await self._entry(session, up_transaction_id)
+        if row is None:
+            return None
+        updated_at = row.updated_at
+        if updated_at.tzinfo is None:  # SQLite drops the zone; stored as UTC
+            updated_at = updated_at.replace(tzinfo=UTC)
+        return LedgerEntryView(
+            up_transaction_id=row.up_transaction_id,
+            status=row.status,
+            reason=row.reason,
+            reason_code=row.reason_code,
+            ynab_transaction_id=row.ynab_transaction_id,
+            attempts=row.attempts,
+            updated_at=updated_at,
+        )
+
     async def attempts(self, up_transaction_id: str) -> int:
         """How many attempts are recorded (0 if none); for inspection."""
         async with self._session_factory() as session:
@@ -84,28 +183,45 @@ class SqlLedger:
         return entry.attempts if entry else 0
 
     async def record(self, outcome: Outcome) -> None:
-        status, ynab_id, reason = _fields(outcome)
+        status, ynab_id, reason, reason_code = _fields(outcome)
         up_id = outcome.up_transaction_id
         async with self._session_factory() as session:
             entry = await self._entry(session, up_id)
-            if entry is None:
+            if isinstance(outcome, Deleted):
+                if entry is None or entry.status != "forwarded":
+                    logger.warning(
+                        "Ledger entry not forwarded; deletion not recorded",
+                        up_transaction_id=up_id,
+                    )
+                else:
+                    entry.status = status
+                    entry.reason = reason
+            elif entry is None:
                 session.add(
                     LedgerEntry(
                         up_transaction_id=up_id,
                         status=status,
                         ynab_transaction_id=ynab_id,
                         reason=reason,
+                        reason_code=reason_code,
                         attempts=1,
                     )
                 )
-            elif entry.status != "failed":
+            elif overwritable(entry.status, entry.reason_code):
+                if entry.status == "skipped" and status == "failed":
+                    logger.warning(
+                        "Retry failed; skip kept for the next backfill",
+                        up_transaction_id=up_id,
+                    )
+                else:
+                    entry.status = status
+                    entry.ynab_transaction_id = ynab_id
+                    entry.reason = reason
+                    entry.reason_code = reason_code
+                    entry.attempts += 1
+            else:
                 logger.warning(
                     "Ledger entry already handled",
                     up_transaction_id=up_id,
                     status=entry.status,
                 )
-            else:
-                entry.status = status
-                entry.ynab_transaction_id = ynab_id
-                entry.reason = reason
-                entry.attempts += 1

@@ -97,7 +97,11 @@ The container runs as uid 1000, so the host `data` folder must be writable by th
 3. `UP_API_TOKEN`, `YNAB_API_TOKEN` and `YNAB_BUDGET_ID` must be set. Startup fails naming the missing or empty field.
 4. If you override the container command, use `uvicorn --factory app:create_app`.
 5. On startup and on `/refresh`, stale or duplicate webhooks this app created on the same host are deleted. Webhooks this app created on other hosts are only logged, and webhooks it didn't create are never touched.
-6. Optional: the old `payee_category_mappings` and `processed_transactions` tables are left in the database, unread. You can remove them with the `sqlite3` CLI. The database is `up_to_ynab.db` in the working directory by default, or `./data/up_to_ynab.db` with this repo's `docker-compose.yml`.
+6. The old `payee_category_mappings` and `processed_transactions` tables are left in place by 3.0. From 3.1 they are dropped automatically on startup.
+
+### Upgrading to 3.1 (webhook signatures)
+
+`/webhook` now verifies Up's signature (`X-Up-Authenticity-Signature`) and answers 401 without a valid one. Up gives each webhook a secret only when it is created, so the app stores it. On the first start after upgrading, your existing webhook has no stored secret: it is deleted and a new one is created (with `WEBHOOK_URL` set). Without `WEBHOOK_URL`, nothing can be registered and `/webhook` rejects every event. Set `ADMIN_TOKEN` to protect `/refresh` and `/backfill`.
 
 Coming from 1.x: set `WEBHOOK_URL=<your-host>/webhook`. The old `/` webhook is removed on first start.
 
@@ -113,6 +117,7 @@ Transactions already forwarded by 2.x are not re-sent. The YNAB `import_id` is n
 | `YNAB_API_TOKEN` | ✅ | - | YNAB Personal Access Token |
 | `YNAB_BUDGET_ID` | ✅ | - | YNAB Budget ID |
 | `WEBHOOK_URL` | ❌ | - | Public URL ending `/webhook`; if unset, webhook registration is skipped |
+| `ADMIN_TOKEN` | ❌ | - | If set, `/refresh` and `/backfill` need `Authorization: Bearer <token>`; if unset it is open and a warning is logged at startup |
 | `UP_BASE_URL` | ❌ | https://api.up.com.au/api/v1/ | Up Bank API base URL |
 | `YNAB_BASE_URL` | ❌ | https://api.youneedabudget.com/v1/ | YNAB API base URL |
 | `PORT` | ❌ | 5001 | port the container listens on (Docker/compose); pass --port when running uvicorn yourself |
@@ -130,8 +135,10 @@ Transfers between your Up accounts are recognised by Up's `transferAccount` rela
 ## API Endpoints
 
 - `GET /health` - Health check (`status`, `service`, `version` 3.0.0)
-- `POST /webhook` - Up Bank webhook receiver. Answers 200 with status `forwarded`, `skipped` or `ignored`, and 503 on failure so Up retries. Only `TRANSACTION_CREATED` is acted on.
-- `GET /refresh` - Reconciles webhooks, then rebuilds the Budget Index
+- `POST /webhook` - Up Bank webhook receiver. Needs a valid `X-Up-Authenticity-Signature` (HMAC-SHA256 of the raw body under the secret of a webhook this app created), else 401. Answers 200 with status `forwarded`, `settled`, `skipped`, `deleted`, `flagged` or `ignored`, and 503 on failure so Up retries. `TRANSACTION_CREATED`, `TRANSACTION_SETTLED` and `TRANSACTION_DELETED` are acted on: a deleted transaction that was forwarded is deleted in YNAB if still uncleared, or flagged red if you have cleared or reconciled it; a settled transaction is marked cleared in YNAB (and its amount corrected) unless you have reconciled it.
+- `GET /refresh` - Reconciles webhooks, then rebuilds the Budget Index. With `ADMIN_TOKEN` set: `curl -H "Authorization: Bearer $ADMIN_TOKEN" https://your-domain.com/refresh` (401 otherwise)
+- `GET /ledger/{up_transaction_id}` - Shows what happened to one Up transaction: `status` (forwarded, skipped, failed or deleted), `reason`, `reason_code`, `ynab_transaction_id`, `attempts` and `updated_at` (UTC); 404 if nothing is recorded. With `ADMIN_TOKEN` set: `curl -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:5001/ledger/<up-transaction-id>` answers e.g. `{"up_transaction_id": "abc", "status": "skipped", "reason": "Up account not in YNAB", "reason_code": "account_not_in_ynab", "ynab_transaction_id": null, "attempts": 2, "updated_at": "2026-10-30T01:02:03Z"}`.
+- `POST /backfill?since=YYYY-MM-DD` - Forwards Up transactions created on or after that day (Australian time) that YNAB doesn't have yet, e.g. after downtime or after adding a YNAB account that was missing (run `/refresh` first). Handled transactions are left alone; transactions skipped because their Up account wasn't in YNAB are retried (as ordinary transactions, never as a YNAB transfer, since the other leg may already be in YNAB, so those two legs aren't linked). Stops after 150 YNAB creates and answers `more_remaining: true`; run it again. With `ADMIN_TOKEN` set: `curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" "http://localhost:5001/backfill?since=2026-10-01"` answers e.g. `{"forwarded": 12, "skipped": 3, "failed": 0, "already_handled": 40, "more_remaining": false}`. 502 if Up can't be listed.
 - `GET /docs` - Interactive API documentation
 
 ## Architecture
@@ -146,15 +153,16 @@ Up webhook ──▶ /webhook ──▶ Forwarder
 ```
 
 - **Budget Index**: YNAB accounts and the Category match, built at startup, every 6 hours, on `/refresh`, and lazily for an unknown Up account.
-- **Ledger**: one row per Up transaction in the SQLite `ledger_entries` table; forwarded and skipped are final, failed is retried on redelivery.
+- **Ledger**: one row per Up transaction in the SQLite `ledger_entries` table; forwarded and skipped are final (a forwarded row becomes deleted, also final, when Up deletes the transaction), failed is retried on redelivery.
 
 ## Limitations
 
-- `/webhook` and `/refresh` have no authentication, and Up's `X-Up-Authenticity-Signature` is not verified. Anyone who knows the URL can make the app fetch and forward a transaction (only real Up transactions, via your token) or trigger a rebuild. Keep the URL private, or put the app behind a reverse proxy that restricts access.
-- Only `TRANSACTION_CREATED` is acted on. Settled and deleted events are ignored, so a cancelled hold stays in YNAB until you remove it.
-- Transactions are always created as uncleared.
-- The Category match uses the Up description, so a payee you rename in YNAB is no longer matched.
-- An Up account with no matching YNAB account is skipped, and those transactions are not retried after you add the account.
+- `/webhook` verifies Up's signature, but `/refresh` and `/backfill` are open unless `ADMIN_TOKEN` is set; anyone who can reach it can trigger a rebuild or a backfill. Set `ADMIN_TOKEN`, or restrict access with a reverse proxy.
+- A deleted transaction whose YNAB copy was cleared or reconciled is flagged red for review, not deleted.
+- A deleted event for a transaction that reached YNAB through the already-imported path (no YNAB id recorded) is ignored with a warning; remove it by hand.
+- If Up starts describing a merchant differently (for example once it recognises the merchant), the new description has no Category match until you categorise it in YNAB again. Payees renamed by your YNAB rename rules are matched.
+- An Up account with no matching YNAB account is skipped, and webhooks don't retry it after you add the account; run `/refresh`, then `POST /backfill?since=...` to forward them.
+- `/backfill` stops after 150 YNAB creates per run (YNAB allows 200 requests an hour) and works oldest first, so re-run it while `more_remaining` is true; it can report `more_remaining` when everything left was already handled. Its `since` date starts at midnight Australian Eastern Standard Time.
 - The database schema is created on startup; there are no migrations.
 
 ## Deployment Options
@@ -197,6 +205,20 @@ pip install -r requirements-dev.txt
 - Colored console logging in development
 - Configurable log levels via `DEBUG_MODE`
 
+### Setup warnings
+At startup and on `/refresh` the app logs a warning when:
+- no Up account matches a YNAB account (names must be identical); this is also checked on every Budget Index rebuild.
+- the YNAB plan named by `YNAB_BUDGET_ID` has "(Archived" in its name ("YNAB plan looks archived"): set `YNAB_BUDGET_ID` to the active plan. If the plan name can't be read, "Could not read YNAB plan name" is logged and startup continues.
+
+### Debugging with Postman
+Import both files from `docs/postman/` (`up-to-ynab.postman_collection.json` and `up-to-ynab.postman_environment.json`), select the "up-to-ynab (local)" environment and fill in the variables:
+- `baseUrl` defaults to `http://localhost:5001`.
+- `adminToken` is your `ADMIN_TOKEN`; leave it empty when `ADMIN_TOKEN` is unset.
+- `webhookSecret` is the `secret_key` stored for your webhook in the `webhook_secrets` table of the app's database.
+- `upToken`, `ynabToken` and `budgetId` are your Up token, YNAB token and YNAB plan id; `upTransactionId`, `upWebhookId` and `ynabTransactionId` fill the ids the requests use.
+
+The "Webhook > Signed events" requests are signed for you with `webhookSecret`. The unsigned request should get 401. The "Up API" and "YNAB API" folders call the real APIs and only read, except "Ping webhook", which makes Up send a real PING event to the app. Never export the environment with values filled in.
+
 ### Docker Health Checks
 Built-in Docker health checks monitor service availability every 30 seconds.
 
@@ -206,10 +228,11 @@ Built-in Docker health checks monitor service availability every 30 seconds.
 ```
 up-to-ynab/
 ├── app.py            # Composition root, VERSION, routes, lifespan
-├── webhooks.py       # Pure webhook reconciliation planner
-├── forwarding/       # Forwarder, translation, Budget Index, Ledger
+├── webhooks.py       # Pure webhook reconciliation planner, signature check
+├── forwarding/       # Forwarder, backfill, translation, Budget Index, Ledger
 ├── clients/          # Up and YNAB client Protocols and HTTP adapters
-├── database/         # SQLAlchemy models and connection
+├── database/         # SQLAlchemy models, connection and migration runner
+├── migrations/       # Alembic revisions
 ├── models/           # Pydantic models for Up and YNAB payloads
 ├── utils/            # config.py (Settings), logging.py
 ├── tests/            # Test suite

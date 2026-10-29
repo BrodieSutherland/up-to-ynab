@@ -43,7 +43,7 @@ Who a transaction was paid to or received from, as Up describes it.
 _Avoid_: merchant, description
 
 **Category match**:
-The YNAB category a Payee has always been given in the customer's past YNAB transactions. A Payee with zero or several past categories has no Category match.
+The YNAB category a Payee has always been given in the customer's past YNAB transactions, found by the Payee's name either as YNAB shows it or as it was imported before YNAB renamed it. A Payee with zero or several past categories has no Category match.
 _Avoid_: payee mapping, category mapping
 
 ## Processing
@@ -57,5 +57,5 @@ Turning one Up transaction into either a YNAB transaction to create or a decisio
 _Avoid_: conversion, mapping, filtering
 
 **Ledger**:
-The record of every Up transaction the app has handled and what happened to it (forwarded, skipped, or failed). A transaction counts as handled once it has been forwarded or deliberately skipped; a failure does not count. A failed transaction is attempted again when Up delivers it again.
+The record of every Up transaction the app has handled and what happened to it (forwarded, skipped, failed, or deleted). A transaction counts as handled once it has been forwarded or deliberately skipped; a failure does not count. A forwarded transaction that Up later deletes is marked deleted, which is final. A failed transaction is attempted again when Up delivers it again. A skip records a reason code; a transaction skipped because its Up account was not in YNAB is retried by a backfill, while other skips stay final.
 _Avoid_: processed transactions table, dedupe log

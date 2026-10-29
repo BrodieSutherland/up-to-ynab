@@ -1,27 +1,40 @@
 import asyncio
 import contextlib
+import hmac
 from contextlib import AsyncExitStack, asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, AsyncIterator, Dict, Protocol
 
 import httpx2 as httpx
 import structlog
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, ValidationError
 
 from clients.errors import UpstreamError
 from clients.up import HttpUpClient, UpClient
 from clients.ynab import HttpYnabClient, YnabClient
 from database.connection import DatabaseManager
+from database.webhook_secrets import SqlWebhookSecretStore, WebhookSecretStore
+from forwarding.backfill import backfill
 from forwarding.budget_index import BudgetIndexHolder, rebuild_periodically
-from forwarding.forwarder import Forwarder
-from forwarding.ledger import Failed, Forwarded, Skipped, SqlLedger
+from forwarding.forwarder import Forwarder, Settled
+from forwarding.ledger import (
+    Deleted,
+    Failed,
+    Forwarded,
+    LedgerReader,
+    Skipped,
+    SqlLedger,
+)
 from models.up_models import UpWebhookEvent
 from utils.config import Settings
 from utils.logging import setup_logging
-from webhooks import plan_webhook_changes
+from webhooks import SIGNATURE_HEADER, plan_webhook_changes, signature_valid
 
 logger = structlog.get_logger()
 
@@ -40,11 +53,70 @@ class WebhookResponse(BaseModel):
                 {"status": "forwarded", "result": "ynab-transaction-id"},
                 {"status": "forwarded", "result": "already in YNAB"},
                 {"status": "skipped", "result": "Mirror side of a Transfer"},
-                {"status": "ignored", "result": "not a transaction creation"},
+                {"status": "deleted", "result": "deleted in YNAB"},
+                {"status": "flagged", "result": "flagged red: cleared in YNAB"},
+                {"status": "ignored", "result": "not a transaction event"},
                 {"status": "failed", "result": "POST /transactions -> 500"},
             ]
         }
     }
+
+
+class BackfillResponse(BaseModel):
+    """Counts from a backfill run."""
+
+    forwarded: int
+    skipped: int
+    failed: int
+    already_handled: int
+    more_remaining: bool
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "forwarded": 12,
+                    "skipped": 3,
+                    "failed": 0,
+                    "already_handled": 40,
+                    "more_remaining": False,
+                }
+            ]
+        }
+    }
+
+
+class LedgerEntryResponse(BaseModel):
+    """A Ledger row."""
+
+    up_transaction_id: str
+    status: str
+    reason: str | None
+    reason_code: str | None
+    ynab_transaction_id: str | None
+    attempts: int
+    updated_at: datetime
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "up_transaction_id": "tx1",
+                    "status": "skipped",
+                    "reason": "Up account not in YNAB",
+                    "reason_code": "account_not_in_ynab",
+                    "ynab_transaction_id": None,
+                    "attempts": 2,
+                    "updated_at": "2026-10-30T01:02:03Z",
+                }
+            ]
+        }
+    }
+
+
+# Australian Eastern Standard Time; during daylight saving the cut-off is an
+# hour early, which only re-checks handled transactions.
+AEST = timezone(timedelta(hours=10))
 
 
 class IndexRebuilder(Protocol):
@@ -58,6 +130,9 @@ class Services:
     up: UpClient
     forwarder: Forwarder
     budget_index: IndexRebuilder
+    webhook_secrets: WebhookSecretStore
+    ynab: YnabClient
+    ledger: LedgerReader
 
 
 def build_services(
@@ -65,8 +140,16 @@ def build_services(
 ) -> Services:
     """Wire services from settings and clients; the only place they are built."""
     index = BudgetIndexHolder(up, ynab)
-    forwarder = Forwarder(up, ynab, index, SqlLedger(database.get_session))
-    return Services(up=up, forwarder=forwarder, budget_index=index)
+    ledger = SqlLedger(database.get_session)
+    forwarder = Forwarder(up, ynab, index, ledger)
+    return Services(
+        up=up,
+        forwarder=forwarder,
+        budget_index=index,
+        webhook_secrets=SqlWebhookSecretStore(database.get_session),
+        ynab=ynab,
+        ledger=ledger,
+    )
 
 
 @asynccontextmanager
@@ -75,7 +158,7 @@ async def open_services(settings: Settings) -> AsyncIterator[Services]:
     async with AsyncExitStack() as stack:
         database = DatabaseManager(settings.database_url, echo=settings.debug_mode)
         stack.push_async_callback(database.close)
-        await database.create_tables()
+        await database.migrate()
         up_http = await stack.enter_async_context(httpx.AsyncClient())
         ynab_http = await stack.enter_async_context(httpx.AsyncClient())
         up = HttpUpClient(up_http, settings.up_api_token, settings.up_base_url)
@@ -88,8 +171,35 @@ async def open_services(settings: Settings) -> AsyncIterator[Services]:
         yield build_services(settings, database, up, ynab)
 
 
-async def reconcile_webhooks(up: UpClient, webhook_url: str | None) -> None:
-    """Make exactly one Up webhook point at webhook_url; upstream errors are logged."""
+async def reconcile_webhooks(
+    up: UpClient, secrets: WebhookSecretStore, webhook_url: str | None
+) -> None:
+    """Make exactly one usable Up webhook point at webhook_url.
+
+    A hook is usable only if its signing secret is stored. Upstream errors are
+    logged. Secrets are never logged.
+    """
+    await _reconcile(up, secrets, webhook_url)
+    if not await secrets.all():
+        logger.warning(
+            "No webhook secret stored; /webhook rejects every event",
+            hint="set WEBHOOK_URL",
+        )
+
+
+async def reconcile_webhooks_safely(
+    up: UpClient, secrets: WebhookSecretStore, webhook_url: str | None
+) -> None:
+    """reconcile_webhooks, but any failure is logged so callers carry on."""
+    try:
+        await reconcile_webhooks(up, secrets, webhook_url)
+    except Exception as e:
+        logger.error("Webhook reconciliation failed", error=str(e))
+
+
+async def _reconcile(
+    up: UpClient, secrets: WebhookSecretStore, webhook_url: str | None
+) -> None:
     if not webhook_url:
         logger.info("No webhook URL configured - webhook setup skipped")
         return
@@ -98,9 +208,14 @@ async def reconcile_webhooks(up: UpClient, webhook_url: str | None) -> None:
     except UpstreamError as e:
         logger.error("Failed to list webhooks", status_code=e.status_code, error=str(e))
         return
-    plan = plan_webhook_changes(registered, webhook_url)
+    plan = plan_webhook_changes(
+        registered, webhook_url, known_secret_ids=set(await secrets.all())
+    )
     for warning in plan.warnings:
         logger.warning("Webhook left in place", detail=warning)
+    for webhook_id in plan.forget:
+        await secrets.delete(webhook_id)
+        logger.info("Stored secret forgotten", webhook_id=webhook_id)
     for webhook_id in plan.delete:
         try:
             await up.delete_webhook(webhook_id)
@@ -112,10 +227,11 @@ async def reconcile_webhooks(up: UpClient, webhook_url: str | None) -> None:
                 error=str(e),
             )
         else:
+            await secrets.delete(webhook_id)
             logger.info("Webhook deleted", webhook_id=webhook_id)
     if plan.create:
         try:
-            webhook_id = await up.create_webhook(webhook_url)
+            created = await up.create_webhook(webhook_url)
         except UpstreamError as e:
             logger.error(
                 "Failed to create webhook",
@@ -124,7 +240,46 @@ async def reconcile_webhooks(up: UpClient, webhook_url: str | None) -> None:
                 error=str(e),
             )
         else:
-            logger.info("Webhook created", webhook_id=webhook_id, url=webhook_url)
+            await secrets.save(created.id, created.secret_key)
+            logger.info("Webhook created", webhook_id=created.id, url=webhook_url)
+
+
+_bearer = HTTPBearer(auto_error=False)
+
+
+async def require_admin(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> None:
+    """Admin endpoints need the ADMIN_TOKEN as a Bearer token, if one is set."""
+    token = request.app.state.settings.admin_token
+    if token is None:
+        return
+    if credentials is None or not hmac.compare_digest(
+        credentials.credentials.encode(), token.encode()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid admin token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+async def warn_if_plan_archived(ynab: YnabClient) -> None:
+    """Warn if the configured YNAB plan looks archived. Never raises upstream errors."""
+    try:
+        name = await ynab.plan_name()
+    except UpstreamError as e:
+        logger.warning(
+            "Could not read YNAB plan name", status_code=e.status_code, error=str(e)
+        )
+        return
+    if name is not None and "(Archived" in name:
+        logger.warning(
+            "YNAB plan looks archived",
+            plan_name=name,
+            hint="set YNAB_BUDGET_ID to the active plan",
+        )
 
 
 async def _run_startup_tasks(settings: Settings, services: Services) -> None:
@@ -136,12 +291,18 @@ async def _run_startup_tasks(settings: Settings, services: Services) -> None:
             reason="ignored since 3.0.0; accounts are matched by name",
         )
     try:
-        await reconcile_webhooks(services.up, settings.webhook_url)
+        if settings.admin_token is None:
+            logger.warning("ADMIN_TOKEN not set; admin endpoints are open")
+        await reconcile_webhooks_safely(
+            services.up, services.webhook_secrets, settings.webhook_url
+        )
 
         try:
             await services.budget_index.rebuild()
         except Exception as e:
             logger.error("Failed to build budget index on startup", error=str(e))
+
+        await warn_if_plan_archived(services.ynab)
 
     except Exception as e:
         logger.error(
@@ -246,7 +407,7 @@ def create_app(
         response_model=WebhookResponse,
         summary="Handle Up Bank webhook events",
         description="""
-        Process webhook events from Up Bank for transaction creation.
+        Process transaction webhook events from Up Bank.
 
         **Example payload for TRANSACTION_CREATED event:**
         ```json
@@ -270,26 +431,69 @@ def create_app(
         }
         ```
 
-        The webhook will:
-        1. Validate the payload structure
-        2. Check if it's a TRANSACTION_CREATED event
-        3. Fetch the transaction details from Up Bank API
-        4. Skip the Mirror side of a Transfer
-        5. Look up the payee's Category match in the Budget Index
-        6. Create the transaction in YNAB and record the outcome
+        TRANSACTION_CREATED fetches the transaction from Up, skips the Mirror
+        side of a Transfer, applies the payee's Category match and creates the
+        transaction in YNAB, recording the outcome.
 
-        Answers 503 when forwarding failed so Up redelivers the event;
-        otherwise 200 with status forwarded, skipped or ignored.
+        TRANSACTION_SETTLED marks the YNAB copy cleared and corrects its amount,
+        leaving reconciled transactions alone; a transaction never forwarded is
+        created (already cleared).
+
+        TRANSACTION_DELETED deletes the YNAB copy of a forwarded transaction if
+        it is still uncleared; a cleared or reconciled copy is flagged red for
+        review instead. Transactions never forwarded are ignored.
+
+        The request must carry Up's `X-Up-Authenticity-Signature` header: the
+        hex SHA-256 HMAC of the raw body under the secret of a webhook this app
+        created. Answers 401 when it is missing or does not match.
+
+        Answers 503 when handling failed so Up redelivers the event;
+        otherwise 200 with status forwarded, skipped, settled, deleted, flagged
+        or ignored.
         """,
+        responses={401: {"description": "Missing or invalid webhook signature"}},
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {"schema": UpWebhookEvent.model_json_schema()}
+                },
+            }
+        },
     )
-    async def handle_webhook(webhook_event: UpWebhookEvent) -> JSONResponse:
+    async def handle_webhook(
+        request: Request,
+        signature: str | None = Header(None, alias=SIGNATURE_HEADER),
+    ) -> JSONResponse:
         """Handle incoming webhook events from Up Bank."""
+        body = await request.body()
+        secrets = await app.state.services.webhook_secrets.all()
+        if not signature_valid(body, signature, secrets.values()):
+            logger.warning(
+                "Webhook signature rejected",
+                reason="missing" if not signature else "invalid",
+            )
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Invalid webhook signature"},
+            )
+        try:
+            webhook_event = UpWebhookEvent.model_validate_json(body)
+        except ValidationError as exc:
+            raise RequestValidationError(exc.errors(include_url=False))
         logger.info("Received event", event_type=webhook_event.data.event_type)
         outcome = await app.state.services.forwarder.handle(webhook_event)
         if isinstance(outcome, Forwarded):
             body = WebhookResponse(
                 status="forwarded",
                 result=outcome.ynab_transaction_id or "already in YNAB",
+            )
+        elif isinstance(outcome, Settled):
+            body = WebhookResponse(status="settled", result=outcome.ynab_transaction_id)
+        elif isinstance(outcome, Deleted):
+            body = WebhookResponse(
+                status="flagged" if outcome.flagged else "deleted",
+                result=outcome.reason,
             )
         elif isinstance(outcome, Skipped):
             body = WebhookResponse(status="skipped", result=outcome.reason)
@@ -307,16 +511,19 @@ def create_app(
         )
 
     # Manual refresh endpoint
-    @app.get("/refresh", tags=["admin"])
+    @app.get("/refresh", tags=["admin"], dependencies=[Depends(require_admin)])
     async def refresh_data() -> Dict[str, str]:
         """Rebuild the Budget Index."""
         try:
             logger.info("Manual refresh requested")
 
-            await reconcile_webhooks(
-                app.state.services.up, app.state.settings.webhook_url
+            await reconcile_webhooks_safely(
+                app.state.services.up,
+                app.state.services.webhook_secrets,
+                app.state.settings.webhook_url,
             )
             await app.state.services.budget_index.rebuild()
+            await warn_if_plan_archived(app.state.services.ynab)
             return {"status": "success", "message": "Data refreshed successfully"}
 
         except Exception as exc:
@@ -325,6 +532,65 @@ def create_app(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to refresh data",
             )
+
+    @app.get(
+        "/ledger/{up_transaction_id}",
+        tags=["admin"],
+        response_model=LedgerEntryResponse,
+        dependencies=[Depends(require_admin)],
+        summary="Show what happened to an Up transaction",
+        responses={404: {"description": "No Ledger entry for this transaction"}},
+    )
+    async def show_ledger_entry(up_transaction_id: str) -> Dict[str, Any]:
+        """The Ledger row for an Up transaction id."""
+        view = await app.state.services.ledger.entry(up_transaction_id)
+        if view is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No Ledger entry for this transaction",
+            )
+        return asdict(view)
+
+    @app.post(
+        "/backfill",
+        tags=["admin"],
+        response_model=BackfillResponse,
+        dependencies=[Depends(require_admin)],
+        summary="Forward Up transactions missed by the webhook",
+        responses={502: {"description": "Could not list Up transactions"}},
+    )
+    async def run_backfill(
+        since: date = Query(
+            ...,
+            description=(
+                "YYYY-MM-DD; transactions created on or after this day "
+                "(Australian time)"
+            ),
+        ),
+    ) -> Dict[str, Any]:
+        """Forward Up transactions created since a date that YNAB does not have.
+
+        Transactions already forwarded, deleted or skipped are left alone,
+        except those skipped because their Up account was not in YNAB, which
+        are retried (run /refresh after adding the account). Stops after
+        150 YNAB creates; run it again while `more_remaining` is true.
+        """
+        start = datetime.combine(since, time(0), tzinfo=AEST)
+        try:
+            report = await backfill(
+                app.state.services.up, app.state.services.forwarder, start
+            )
+        except UpstreamError as exc:
+            logger.error(
+                "Failed to list Up transactions",
+                status_code=exc.status_code,
+                error=str(exc),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Could not list Up transactions",
+            )
+        return asdict(report)
 
     return app
 

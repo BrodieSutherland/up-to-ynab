@@ -1,4 +1,7 @@
+from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Protocol
+from urllib.parse import urlencode
 
 import httpx2 as httpx
 from pydantic import ValidationError
@@ -14,6 +17,14 @@ from models.up_models import (
 WEBHOOK_DESCRIPTION = "UP to YNAB transaction sync webhook"
 
 
+@dataclass(frozen=True)
+class CreatedWebhook:
+    """A webhook Up just created, with the secret it signs deliveries with."""
+
+    id: str
+    secret_key: str = field(repr=False)
+
+
 class UpClient(Protocol):
     """What the app needs from Up. Every method raises UpstreamError on failure."""
 
@@ -21,10 +32,14 @@ class UpClient(Protocol):
 
     async def list_accounts(self) -> list[UpAccount]: ...
 
+    async def list_transactions(self, since: datetime) -> list[UpTransaction]:
+        """Transactions created at or after `since` (must be timezone-aware)."""
+        ...
+
     async def list_webhooks(self) -> list[UpWebhook]: ...
 
-    async def create_webhook(self, url: str) -> str:
-        """Create a webhook and return its id."""
+    async def create_webhook(self, url: str) -> CreatedWebhook:
+        """Create a webhook and return its id and signing secret."""
         ...
 
     async def delete_webhook(self, webhook_id: str) -> None: ...
@@ -91,6 +106,14 @@ class HttpUpClient:
         except (ValidationError, KeyError, TypeError) as exc:
             raise UpstreamError("GET /accounts returned unexpected shape") from exc
 
+    async def list_transactions(self, since: datetime) -> list[UpTransaction]:
+        query = urlencode({"filter[since]": since.isoformat(), "page[size]": 100})
+        items = await self._list("/transactions?" + query)
+        try:
+            return [UpTransaction.model_validate(item) for item in items]
+        except (ValidationError, TypeError) as exc:
+            raise UpstreamError("GET /transactions returned unexpected shape") from exc
+
     async def list_webhooks(self) -> list[UpWebhook]:
         items = await self._list("/webhooks")
         try:
@@ -105,13 +128,16 @@ class HttpUpClient:
         except (ValidationError, KeyError, TypeError) as exc:
             raise UpstreamError("GET /webhooks returned unexpected shape") from exc
 
-    async def create_webhook(self, url: str) -> str:
+    async def create_webhook(self, url: str) -> CreatedWebhook:
         payload = {
             "data": {"attributes": {"url": url, "description": WEBHOOK_DESCRIPTION}}
         }
         body = await self._request("POST", "/webhooks", json=payload)
         try:
-            return str(body["data"]["id"])
+            data = body["data"]
+            return CreatedWebhook(
+                id=str(data["id"]), secret_key=str(data["attributes"]["secretKey"])
+            )
         except (KeyError, TypeError) as exc:
             raise UpstreamError("POST /webhooks returned unexpected shape") from exc
 
