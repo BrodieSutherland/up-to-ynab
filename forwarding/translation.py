@@ -15,8 +15,8 @@ class Skip:
 
 
 def cleared_status(up_transaction: UpTransaction) -> str:
-    """The single place cleared is decided (#111 changes only this)."""
-    return "uncleared"
+    """The single place cleared is decided: settled is cleared, a hold is not."""
+    return "cleared" if up_transaction.attributes.status == "SETTLED" else "uncleared"
 
 
 def _memo(tx: UpTransaction) -> str | None:
@@ -28,7 +28,8 @@ def _memo(tx: UpTransaction) -> str | None:
     return None
 
 
-def _date(tx: UpTransaction) -> str:
+def ynab_date(tx: UpTransaction) -> str:
+    """The YNAB date of a transaction."""
     # createdAt in its own offset; never settledAt
     return tx.attributes.created_at.date().isoformat()
 
@@ -61,7 +62,7 @@ def translate(tx: UpTransaction, index: BudgetIndex) -> YnabTransactionDetail | 
             category_id=None,
             memo=_memo(tx),
             amount=tx.amount_milliunits,
-            date=_date(tx),
+            date=ynab_date(tx),
             cleared=cleared_status(tx),
             import_id=tx.id,
         )
@@ -71,7 +72,7 @@ def translate(tx: UpTransaction, index: BudgetIndex) -> YnabTransactionDetail | 
         category_id=index.category_match(tx.payee),
         memo=_memo(tx),
         amount=tx.amount_milliunits,
-        date=_date(tx),
+        date=ynab_date(tx),
         cleared=cleared_status(tx),
         import_id=tx.id,
     )

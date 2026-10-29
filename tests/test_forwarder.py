@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 import pytest
 
 from clients.errors import UpstreamError
@@ -6,12 +9,13 @@ from forwarding.budget_index import (
     NotInYnab,
     YnabAccountRef,
 )
-from forwarding.forwarder import Forwarder, Ignored
+from forwarding.forwarder import Forwarder, Ignored, Settled
 from forwarding.ledger import Failed, Forwarded, Skipped
 from models.up_models import UpTransaction, UpWebhookEvent
 from tests.fakes.budget_index import FakeIndexHolder
 from tests.fakes.ledger import InMemoryLedger
 from tests.fakes.up import FakeUpClient
+from tests.fakes.ynab import FakeYnabClient, ynab_transaction
 
 INDEX = BudgetIndex({"test-account-id": YnabAccountRef("acct-1", "tp-1")}, {})
 
@@ -118,13 +122,11 @@ async def test_unexpected_error_is_failed(forwarder, event, holder):
 async def test_other_event_types_are_ignored(
     forwarder, sample_up_webhook_event_data, ledger
 ):
-    sample_up_webhook_event_data["data"]["attributes"][
-        "eventType"
-    ] = "TRANSACTION_SETTLED"
+    sample_up_webhook_event_data["data"]["attributes"]["eventType"] = "PING"
 
     result = await forwarder.handle(UpWebhookEvent(**sample_up_webhook_event_data))
 
-    assert result == Ignored("test-transaction-id", "not a transaction creation")
+    assert result == Ignored("test-transaction-id", "not a transaction event")
     assert ledger.entries == {}
 
 
@@ -135,7 +137,7 @@ async def test_created_without_transaction_id_is_ignored(
 
     result = await forwarder.handle(UpWebhookEvent(**sample_up_webhook_event_data))
 
-    assert result == Ignored(None, "not a transaction creation")
+    assert result == Ignored(None, "not a transaction event")
     assert ledger.entries == {}
 
 
@@ -188,3 +190,235 @@ async def test_account_not_in_ynab_is_skipped(fake_up, fake_ynab, event, ledger)
     assert result == Skipped("test-transaction-id", "Up account not in YNAB")
     assert fake_ynab.created == []
     assert ledger.entries["test-transaction-id"].status == "skipped"
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "up"
+
+
+def load_event(name):
+    text = (FIXTURES / "webhook_events" / f"{name}.json").read_text()
+    return UpWebhookEvent(**json.loads(text)["event"])
+
+
+def load_tx(name):
+    text = (FIXTURES / "transactions" / f"{name}.json").read_text()
+    return UpTransaction(**json.loads(text)["data"])
+
+
+SETTLED_ID = "transactions-3"
+ROUND_UP_INDEX = BudgetIndex({"accounts-1": YnabAccountRef("ynab-spending", "tp-s")})
+
+
+@pytest.fixture
+def settled_event():
+    return load_event("TRANSACTION_SETTLED_1")
+
+
+@pytest.fixture
+def settle_up():
+    return FakeUpClient(transactions={SETTLED_ID: load_tx("purchase_with_round_up_1")})
+
+
+def settle_forwarder(up, ynab, ledger, index=ROUND_UP_INDEX):
+    return Forwarder(up, ynab, FakeIndexHolder(index), ledger)
+
+
+async def forwarded_row(ledger, ynab_id="ynab-x"):
+    await ledger.record(Forwarded(SETTLED_ID, ynab_id))
+
+
+async def test_settled_marks_forwarded_transaction_cleared(
+    settled_event, settle_up, ledger
+):
+    ynab = FakeYnabClient(
+        transactions=[
+            ynab_transaction(
+                "ynab-x", "Payee", None, amount=-497850, cleared="uncleared"
+            )
+        ]
+    )
+    await forwarded_row(ledger)
+
+    result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
+
+    assert result == Settled(SETTLED_ID, "ynab-x")
+    assert ynab.updates == [("ynab-x", "cleared", None)]
+    assert ynab.created == []
+    assert ledger.entries[SETTLED_ID].status == "forwarded"
+    assert ledger.entries[SETTLED_ID].attempts == 1
+
+
+async def test_settled_fixes_a_differing_amount(settled_event, settle_up, ledger):
+    ynab = FakeYnabClient(
+        transactions=[
+            ynab_transaction(
+                "ynab-x", "Payee", None, amount=-500000, cleared="uncleared"
+            )
+        ]
+    )
+    await forwarded_row(ledger)
+
+    result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
+
+    assert result == Settled(SETTLED_ID, "ynab-x")
+    assert ynab.updates == [("ynab-x", "cleared", -497850)]
+
+
+async def test_settled_leaves_reconciled_transaction(settled_event, settle_up, ledger):
+    ynab = FakeYnabClient(
+        transactions=[
+            ynab_transaction(
+                "ynab-x", "Payee", None, amount=-497850, cleared="reconciled"
+            )
+        ]
+    )
+    await forwarded_row(ledger)
+
+    result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
+
+    assert result == Ignored(SETTLED_ID, "reconciled in YNAB")
+    assert ynab.updates == []
+
+
+async def test_settled_without_ynab_id_finds_by_import_id(
+    settled_event, settle_up, ledger
+):
+    ynab = FakeYnabClient(
+        transactions=[
+            ynab_transaction("other", "A", None, import_id="transactions-9"),
+            ynab_transaction("gone", "A", None, import_id=SETTLED_ID, deleted=True),
+            ynab_transaction(
+                "found",
+                "Payee",
+                None,
+                amount=-497850,
+                cleared="uncleared",
+                import_id=SETTLED_ID,
+            ),
+        ]
+    )
+    await forwarded_row(ledger, None)
+
+    result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
+
+    assert result == Settled(SETTLED_ID, "found")
+    assert ynab.since_dates == ["2026-10-17"]
+    assert ynab.updates == [("found", "cleared", None)]
+
+
+async def test_settled_without_ynab_id_not_found_is_ignored(
+    settled_event, settle_up, ledger
+):
+    ynab = FakeYnabClient()
+    await forwarded_row(ledger, None)
+
+    result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
+
+    assert result == Ignored(SETTLED_ID, "not found in YNAB")
+    assert ynab.updates == []
+
+
+async def test_settled_never_forwarded_creates_cleared(
+    settled_event, settle_up, ledger
+):
+    ynab = FakeYnabClient()
+
+    result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
+
+    assert result == Forwarded(SETTLED_ID, "ynab-1")
+    assert [t.cleared for t in ynab.created] == ["cleared"]
+    assert ledger.entries[SETTLED_ID].status == "forwarded"
+
+
+async def test_settled_after_failed_creates_cleared(settled_event, settle_up, ledger):
+    ynab = FakeYnabClient()
+    await ledger.record(Failed(SETTLED_ID, "boom"))
+
+    result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
+
+    assert result == Forwarded(SETTLED_ID, "ynab-1")
+    assert [t.cleared for t in ynab.created] == ["cleared"]
+    assert ledger.entries[SETTLED_ID].attempts == 2
+
+
+async def test_settled_skipped_transaction_is_ignored(settled_event, settle_up, ledger):
+    ynab = FakeYnabClient()
+    await ledger.record(Skipped(SETTLED_ID, "Mirror side of a Transfer"))
+
+    result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
+
+    assert result == Ignored(SETTLED_ID, "skipped transaction")
+    assert ynab.created == []
+    assert ynab.updates == []
+
+
+async def test_settled_mirror_side_without_entry_is_skipped(ledger):
+    up = FakeUpClient(transactions={"transactions-4": load_tx("transfer_mirror_1")})
+    mirror = load_tx("transfer_mirror_1")
+    index = BudgetIndex(
+        {
+            mirror.account_id: YnabAccountRef("ynab-a", "tp-a"),
+            mirror.transfer_account_id: YnabAccountRef("ynab-b", "tp-b"),
+        }
+    )
+    event = UpWebhookEvent(
+        **{
+            "data": {
+                "type": "webhook-events",
+                "id": "e1",
+                "attributes": {
+                    "eventType": "TRANSACTION_SETTLED",
+                    "createdAt": "2026-10-20T07:52:27+11:00",
+                },
+                "relationships": {
+                    "transaction": {
+                        "data": {"type": "transactions", "id": "transactions-4"}
+                    }
+                },
+            }
+        }
+    )
+    ynab = FakeYnabClient()
+
+    result = await settle_forwarder(up, ynab, ledger, index).handle(event)
+
+    assert result == Skipped("transactions-4", "Mirror side of a Transfer")
+    assert ynab.created == []
+    assert ledger.entries["transactions-4"].status == "skipped"
+
+
+@pytest.mark.parametrize(
+    "where, error",
+    [
+        ("ynab_get", UpstreamError("ynab down", 500)),
+        ("ynab_update", UpstreamError("ynab down", 500)),
+        ("up_get", UpstreamError("up down", 503)),
+        ("ledger_lookup", RuntimeError("db gone")),
+    ],
+)
+async def test_settle_failure_is_failed_and_keeps_forwarded_row(
+    settled_event, settle_up, ledger, where, error
+):
+    ynab = FakeYnabClient(
+        transactions=[
+            ynab_transaction(
+                "ynab-x", "Payee", None, amount=-497850, cleared="uncleared"
+            )
+        ]
+    )
+    await forwarded_row(ledger)
+    if where == "ynab_get":
+        ynab.errors["get_transaction"] = error
+    elif where == "ynab_update":
+        ynab.errors["update_transaction"] = error
+    elif where == "up_get":
+        settle_up.errors["get_transaction"] = error
+    else:
+        ledger.errors["lookup"] = error
+
+    result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
+
+    assert isinstance(result, Failed)
+    assert result.reason in ("ynab down", "up down", "Unexpected error: db gone")
+    assert ledger.entries[SETTLED_ID].status == "forwarded"
+    assert ledger.entries[SETTLED_ID].attempts == 1

@@ -16,7 +16,7 @@ from clients.up import HttpUpClient, UpClient
 from clients.ynab import HttpYnabClient, YnabClient
 from database.connection import DatabaseManager
 from forwarding.budget_index import BudgetIndexHolder, rebuild_periodically
-from forwarding.forwarder import Forwarder
+from forwarding.forwarder import Forwarder, Settled
 from forwarding.ledger import Failed, Forwarded, Skipped, SqlLedger
 from models.up_models import UpWebhookEvent
 from utils.config import Settings
@@ -246,7 +246,7 @@ def create_app(
         response_model=WebhookResponse,
         summary="Handle Up Bank webhook events",
         description="""
-        Process webhook events from Up Bank for transaction creation.
+        Process transaction webhook events from Up Bank.
 
         **Example payload for TRANSACTION_CREATED event:**
         ```json
@@ -270,16 +270,16 @@ def create_app(
         }
         ```
 
-        The webhook will:
-        1. Validate the payload structure
-        2. Check if it's a TRANSACTION_CREATED event
-        3. Fetch the transaction details from Up Bank API
-        4. Skip the Mirror side of a Transfer
-        5. Look up the payee's Category match in the Budget Index
-        6. Create the transaction in YNAB and record the outcome
+        TRANSACTION_CREATED fetches the transaction from Up, skips the Mirror
+        side of a Transfer, applies the payee's Category match and creates the
+        transaction in YNAB, recording the outcome.
 
-        Answers 503 when forwarding failed so Up redelivers the event;
-        otherwise 200 with status forwarded, skipped or ignored.
+        TRANSACTION_SETTLED marks the YNAB copy cleared and corrects its amount,
+        leaving reconciled transactions alone; a transaction never forwarded is
+        created (already cleared).
+
+        Answers 503 when handling failed so Up redelivers the event;
+        otherwise 200 with status forwarded, settled, skipped or ignored.
         """,
     )
     async def handle_webhook(webhook_event: UpWebhookEvent) -> JSONResponse:
@@ -291,6 +291,8 @@ def create_app(
                 status="forwarded",
                 result=outcome.ynab_transaction_id or "already in YNAB",
             )
+        elif isinstance(outcome, Settled):
+            body = WebhookResponse(status="settled", result=outcome.ynab_transaction_id)
         elif isinstance(outcome, Skipped):
             body = WebhookResponse(status="skipped", result=outcome.reason)
         elif isinstance(outcome, Failed):

@@ -31,6 +31,12 @@ class YnabClient(Protocol):
 
     async def list_transactions(self, since_date: str) -> list[YnabTransaction]: ...
 
+    async def get_transaction(self, ynab_id: str) -> YnabTransaction: ...
+
+    async def update_transaction(
+        self, ynab_id: str, cleared: str, amount: int | None
+    ) -> None: ...
+
 
 class HttpYnabClient:
     """YnabClient over an injected httpx2.AsyncClient (the caller closes it)."""
@@ -101,3 +107,22 @@ class HttpYnabClient:
             return [YnabTransaction(**item) for item in body["data"]["transactions"]]
         except (ValidationError, KeyError, TypeError) as exc:
             raise UpstreamError(f"GET {path} returned unexpected shape") from exc
+
+    async def get_transaction(self, ynab_id: str) -> YnabTransaction:
+        path = f"{self._plan}/transactions/{ynab_id}"
+        body = await self._request("GET", path)
+        try:
+            return YnabTransaction(**body["data"]["transaction"])
+        except (ValidationError, KeyError, TypeError) as exc:
+            raise UpstreamError(f"GET {path} returned unexpected shape") from exc
+
+    async def update_transaction(
+        self, ynab_id: str, cleared: str, amount: int | None
+    ) -> None:
+        """Set cleared (and amount unless None); the date is never sent."""
+        change: dict[str, Any] = {"id": ynab_id, "cleared": cleared}
+        if amount is not None:
+            change["amount"] = amount
+        await self._request(
+            "PATCH", f"{self._plan}/transactions", json={"transactions": [change]}
+        )

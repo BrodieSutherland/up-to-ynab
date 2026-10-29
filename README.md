@@ -130,7 +130,7 @@ Transfers between your Up accounts are recognised by Up's `transferAccount` rela
 ## API Endpoints
 
 - `GET /health` - Health check (`status`, `service`, `version` 3.0.0)
-- `POST /webhook` - Up Bank webhook receiver. Answers 200 with status `forwarded`, `skipped` or `ignored`, and 503 on failure so Up retries. Only `TRANSACTION_CREATED` is acted on.
+- `POST /webhook` - Up Bank webhook receiver. Answers 200 with status `forwarded`, `settled`, `skipped` or `ignored`, and 503 on failure so Up retries. `TRANSACTION_CREATED` and `TRANSACTION_SETTLED` are acted on: a settled transaction is marked cleared in YNAB (and its amount corrected) unless you have reconciled it.
 - `GET /refresh` - Reconciles webhooks, then rebuilds the Budget Index
 - `GET /docs` - Interactive API documentation
 
@@ -151,8 +151,7 @@ Up webhook ──▶ /webhook ──▶ Forwarder
 ## Limitations
 
 - `/webhook` and `/refresh` have no authentication, and Up's `X-Up-Authenticity-Signature` is not verified. Anyone who knows the URL can make the app fetch and forward a transaction (only real Up transactions, via your token) or trigger a rebuild. Keep the URL private, or put the app behind a reverse proxy that restricts access.
-- Only `TRANSACTION_CREATED` is acted on. Settled and deleted events are ignored, so a cancelled hold stays in YNAB until you remove it.
-- Transactions are always created as uncleared.
+- Deleted events are ignored, so a cancelled hold stays in YNAB until you remove it.
 - The Category match uses the Up description, so a payee you rename in YNAB is no longer matched.
 - An Up account with no matching YNAB account is skipped, and those transactions are not retried after you add the account.
 - The database schema is created on startup; there are no migrations.

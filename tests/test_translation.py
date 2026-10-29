@@ -30,7 +30,16 @@ def load(name):
     return UpTransaction(**json.loads((FIXTURES / f"{name}.json").read_text())["data"])
 
 
-def ordinary(account_id, payee_name, memo, amount, date, category_id, import_id="x"):
+def ordinary(
+    account_id,
+    payee_name,
+    memo,
+    amount,
+    date,
+    category_id,
+    import_id="x",
+    cleared="cleared",
+):
     return {
         "account_id": account_id,
         "payee_id": None,
@@ -39,14 +48,14 @@ def ordinary(account_id, payee_name, memo, amount, date, category_id, import_id=
         "memo": memo,
         "amount": amount,
         "date": date,
-        "cleared": "uncleared",
+        "cleared": cleared,
         "approved": True,
         "flag_color": None,
         "import_id": import_id,
     }
 
 
-def transfer(account_id, payee_id, amount, date, import_id):
+def transfer(account_id, payee_id, amount, date, import_id, cleared="cleared"):
     return {
         "account_id": account_id,
         "payee_id": payee_id,
@@ -55,7 +64,7 @@ def transfer(account_id, payee_id, amount, date, import_id):
         "memo": None,
         "amount": amount,
         "date": date,
-        "cleared": "uncleared",
+        "cleared": cleared,
         "approved": True,
         "flag_color": None,
         "import_id": import_id,
@@ -269,6 +278,7 @@ XFER_ORIG = transfer(
                 "2026-10-17",
                 None,
                 "transactions-5",
+                "uncleared",
             ),
             id="row15-held",
         ),
@@ -336,9 +346,11 @@ def test_parity_field_rules(name, index, want):
     assert (result if isinstance(result, Skip) else result.model_dump()) == want
 
 
-@pytest.mark.parametrize("name", ["held_1", "purchase_plain_1"])
-def test_cleared_is_uncleared_for_held_and_settled(name):
-    assert cleared_status(load(name)) == "uncleared"
+@pytest.mark.parametrize(
+    "name, want", [("held_1", "uncleared"), ("purchase_plain_1", "cleared")]
+)
+def test_cleared_follows_up_status(name, want):
+    assert cleared_status(load(name)) == want
 
 
 def test_account_not_in_ynab_is_skipped():

@@ -134,6 +134,8 @@ class TestListings:
             "transfer_account_id": None,
             "deleted": False,
             "subtransactions": [{"id": "s1", "amount": -5000}],
+            "cleared": "cleared",
+            "import_id": "up-9",
         }
         client, requests = make_client(respond(200, {"data": {"transactions": [item]}}))
 
@@ -144,6 +146,8 @@ class TestListings:
         assert request.url.params["since_date"] == "1970-01-01"
         assert transactions[0].payee_name == "Shop"
         assert transactions[0].category_id == "cat-1"
+        assert transactions[0].cleared == "cleared"
+        assert transactions[0].import_id == "up-9"
         assert transactions[0].subtransactions == [{"id": "s1", "amount": -5000}]
 
     async def test_bad_listing_raises(self):
@@ -157,6 +161,78 @@ class TestListings:
 
         with pytest.raises(UpstreamError):
             await client.list_transactions("1970-01-01")
+
+
+class TestGetTransaction:
+    async def test_gets_and_parses(self):
+        item = {
+            "id": "ynab-tx-1",
+            "date": "2024-01-02",
+            "amount": -5000,
+            "deleted": False,
+            "cleared": "reconciled",
+            "import_id": "up-1",
+        }
+        client, requests = make_client(respond(200, {"data": {"transaction": item}}))
+
+        transaction = await client.get_transaction("ynab-tx-1")
+
+        [request] = requests
+        assert request.method == "GET"
+        assert request.url.path == "/v1/plans/test_budget_id/transactions/ynab-tx-1"
+        assert transaction.cleared == "reconciled"
+        assert transaction.amount == -5000
+        assert transaction.import_id == "up-1"
+
+    async def test_error_status_raises(self):
+        client, _ = make_client(respond(404))
+
+        with pytest.raises(UpstreamError):
+            await client.get_transaction("ynab-tx-1")
+
+    async def test_bad_shape_raises(self):
+        client, _ = make_client(respond(200, {"data": {"transaction": {"id": "x"}}}))
+
+        with pytest.raises(UpstreamError, match="unexpected shape"):
+            await client.get_transaction("x")
+
+    async def test_invalid_json_raises(self):
+        client, _ = make_client(lambda request: httpx.Response(200, content=b"nope"))
+
+        with pytest.raises(UpstreamError):
+            await client.get_transaction("x")
+
+
+class TestUpdateTransaction:
+    async def test_patches_cleared_and_amount(self):
+        client, requests = make_client(respond(200, {"data": {}}))
+
+        await client.update_transaction("ynab-tx-1", "cleared", -497850)
+
+        [request] = requests
+        assert request.method == "PATCH"
+        assert request.url.path == "/v1/plans/test_budget_id/transactions"
+        assert request.headers["Authorization"] == "Bearer test_ynab_token"
+        assert json.loads(request.content) == {
+            "transactions": [
+                {"id": "ynab-tx-1", "cleared": "cleared", "amount": -497850}
+            ]
+        }
+
+    async def test_omits_amount_when_none(self):
+        client, requests = make_client(respond(200, {"data": {}}))
+
+        await client.update_transaction("ynab-tx-1", "cleared", None)
+
+        assert json.loads(requests[0].content) == {
+            "transactions": [{"id": "ynab-tx-1", "cleared": "cleared"}]
+        }
+
+    async def test_error_status_raises(self):
+        client, _ = make_client(respond(400))
+
+        with pytest.raises(UpstreamError):
+            await client.update_transaction("ynab-tx-1", "cleared", None)
 
 
 async def test_token_never_logged_or_in_errors(detail):

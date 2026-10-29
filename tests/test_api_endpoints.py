@@ -12,7 +12,7 @@ from forwarding.budget_index import BudgetIndex, YnabAccountRef
 from forwarding.forwarder import Forwarder
 from models.up_models import UpTransaction, UpWebhook
 from tests.fakes.budget_index import FakeIndexHolder
-from tests.fakes.ledger import InMemoryLedger
+from tests.fakes.ledger import Entry, InMemoryLedger
 from tests.fakes.up import FakeUpClient
 from tests.fakes.ynab import FakeYnabClient, ynab_transaction
 from utils.config import Settings
@@ -120,17 +120,58 @@ class TestAPIEndpoints:
             "result": "Mirror side of a Transfer",
         }
 
-    def test_webhook_other_event_is_ignored(self, client, sample_up_webhook_event_data):
+    def test_webhook_settled_marks_forwarded_transaction(
+        self, test_settings, fake_up, sample_up_webhook_event_data
+    ):
         sample_up_webhook_event_data["data"]["attributes"][
             "eventType"
         ] = "TRANSACTION_SETTLED"
+        ynab = FakeYnabClient(
+            transactions=[
+                ynab_transaction(
+                    "ynab-x", "Shop", None, amount=-12500, cleared="uncleared"
+                )
+            ]
+        )
+        ledger = InMemoryLedger()
+        ledger.entries["test-transaction-id"] = Entry("forwarded", "ynab-x", None, 1)
+        app = create_app(test_settings, make_services(fake_up, ynab, ledger=ledger))
+        with TestClient(app) as c:
+            response = c.post("/webhook", json=sample_up_webhook_event_data)
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "settled", "result": "ynab-x"}
+        assert ynab.updates == [("ynab-x", "cleared", None)]
+
+    def test_webhook_settle_failure_is_503_and_keeps_row(
+        self, test_settings, fake_up, sample_up_webhook_event_data
+    ):
+        sample_up_webhook_event_data["data"]["attributes"][
+            "eventType"
+        ] = "TRANSACTION_SETTLED"
+        ynab = FakeYnabClient(
+            transactions=[ynab_transaction("ynab-x", "Shop", None, amount=-12500)],
+            errors={"update_transaction": UpstreamError("ynab down", 500)},
+        )
+        ledger = InMemoryLedger()
+        ledger.entries["test-transaction-id"] = Entry("forwarded", "ynab-x", None, 1)
+        app = create_app(test_settings, make_services(fake_up, ynab, ledger=ledger))
+        with TestClient(app) as c:
+            response = c.post("/webhook", json=sample_up_webhook_event_data)
+
+        assert response.status_code == 503
+        assert response.json() == {"status": "failed", "result": "ynab down"}
+        assert ledger.entries["test-transaction-id"].status == "forwarded"
+
+    def test_webhook_other_event_is_ignored(self, client, sample_up_webhook_event_data):
+        sample_up_webhook_event_data["data"]["attributes"]["eventType"] = "PING"
 
         response = client.post("/webhook", json=sample_up_webhook_event_data)
 
         assert response.status_code == 200
         assert response.json() == {
             "status": "ignored",
-            "result": "not a transaction creation",
+            "result": "not a transaction event",
         }
 
     def test_webhook_endpoint_invalid_payload(self, client):

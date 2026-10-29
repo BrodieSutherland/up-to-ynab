@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from forwarding.ledger import Forwarded, Outcome, Skipped
+from forwarding.ledger import Forwarded, LedgerState, Outcome, Skipped
 
 
 @dataclass
@@ -26,6 +26,13 @@ class InMemoryLedger:
         self._maybe_raise("is_handled")
         entry = self.entries.get(up_transaction_id)
         return entry is not None and entry.status != "failed"
+
+    async def lookup(self, up_transaction_id: str) -> LedgerState | None:
+        self._maybe_raise("lookup")
+        entry = self.entries.get(up_transaction_id)
+        if entry is None:
+            return None
+        return LedgerState(entry.status, entry.ynab_transaction_id)
 
     async def attempts(self, up_transaction_id: str) -> int:
         entry = self.entries.get(up_transaction_id)

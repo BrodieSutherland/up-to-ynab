@@ -37,11 +37,23 @@ class Failed:
 Outcome = Forwarded | Skipped | Failed
 
 
+@dataclass(frozen=True)
+class LedgerState:
+    """What the Ledger holds for an Up transaction."""
+
+    status: str  # forwarded, skipped or failed
+    ynab_transaction_id: str | None
+
+
 class Ledger(Protocol):
     """Record of what happened to each Up transaction."""
 
     async def is_handled(self, up_transaction_id: str) -> bool:
         """True once forwarded or skipped; a failed transaction is not handled."""
+        ...
+
+    async def lookup(self, up_transaction_id: str) -> LedgerState | None:
+        """The stored state, or None if nothing is recorded."""
         ...
 
     async def record(self, outcome: Outcome) -> None:
@@ -76,6 +88,13 @@ class SqlLedger:
         async with self._session_factory() as session:
             entry = await self._entry(session, up_transaction_id)
         return entry is not None and entry.status != "failed"
+
+    async def lookup(self, up_transaction_id: str) -> LedgerState | None:
+        async with self._session_factory() as session:
+            entry = await self._entry(session, up_transaction_id)
+        if entry is None:
+            return None
+        return LedgerState(entry.status, entry.ynab_transaction_id)
 
     async def attempts(self, up_transaction_id: str) -> int:
         """How many attempts are recorded (0 if none); for inspection."""

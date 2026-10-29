@@ -145,4 +145,6 @@ class YnabTransaction(BaseModel):
     category_id: Optional[str] = None
     transfer_account_id: Optional[str] = None
     deleted: bool
+    cleared: Optional[str] = None
+    import_id: Optional[str] = None
     subtransactions: list[dict] = []

@@ -8,7 +8,7 @@ from clients.up import UpClient
 from clients.ynab import Created, YnabClient
 from forwarding.budget_index import BudgetIndex, IndexUnavailable
 from forwarding.ledger import Failed, Forwarded, Ledger, Outcome, Skipped
-from forwarding.translation import Skip, translate
+from forwarding.translation import Skip, cleared_status, translate, ynab_date
 from models.up_models import UpWebhookEvent
 
 logger = structlog.get_logger()
@@ -20,6 +20,17 @@ class Ignored:
 
     up_transaction_id: str | None
     reason: str
+
+
+@dataclass(frozen=True)
+class Settled:
+    """The YNAB copy of a forwarded transaction was updated on settlement."""
+
+    up_transaction_id: str
+    ynab_transaction_id: str
+
+
+HANDLED_EVENTS = ("TRANSACTION_CREATED", "TRANSACTION_SETTLED")
 
 
 class IndexHolder(Protocol):
@@ -43,14 +54,26 @@ class Forwarder:
 
     async def handle(
         self, event: UpWebhookEvent
-    ) -> Forwarded | Skipped | Failed | Ignored:
+    ) -> Forwarded | Skipped | Failed | Ignored | Settled:
         event_type = event.data.event_type
         up_id = event.data.transaction_id
-        if event_type != "TRANSACTION_CREATED" or not up_id:
+        if not up_id or event_type not in HANDLED_EVENTS:
             logger.info(
                 "Ignoring event", event_type=event_type, up_transaction_id=up_id
             )
-            return Ignored(up_id, "not a transaction creation")
+            return Ignored(up_id, "not a transaction event")
+
+        if event_type == "TRANSACTION_SETTLED":
+            try:
+                state = await self._ledger.lookup(up_id)
+                if state is not None and state.status == "forwarded":
+                    return await self._settle(up_id, state.ynab_transaction_id)
+            except Exception as e:
+                # Record nothing: a forwarded row must not become failed.
+                return self._failed(up_id, e)
+            if state is not None and state.status == "skipped":
+                logger.info("Ignoring skipped transaction", up_transaction_id=up_id)
+                return Ignored(up_id, "skipped transaction")
 
         outcome: Outcome | Ignored
         try:
@@ -58,24 +81,8 @@ class Forwarder:
                 logger.info("Ignoring handled transaction", up_transaction_id=up_id)
                 return Ignored(up_id, "already handled")
             outcome = await self._forward(up_id)
-        except IndexUnavailable:
-            logger.warning("Budget Index unavailable", up_transaction_id=up_id)
-            outcome = Failed(up_id, "Budget Index unavailable")
-        except UpstreamError as e:
-            logger.error(
-                "Upstream call failed",
-                up_transaction_id=up_id,
-                status_code=e.status_code,
-                error=str(e),
-            )
-            outcome = Failed(up_id, str(e))
         except Exception as e:
-            logger.error(
-                "Unexpected error forwarding transaction",
-                up_transaction_id=up_id,
-                exc_info=e,
-            )
-            outcome = Failed(up_id, f"Unexpected error: {e}")
+            outcome = self._failed(up_id, e)
 
         try:
             await self._ledger.record(outcome)
@@ -87,6 +94,61 @@ class Forwarder:
             )
             return Failed(up_id, "Could not record outcome")
         return outcome
+
+    def _failed(self, up_id: str, exc: Exception) -> Failed:
+        if isinstance(exc, IndexUnavailable):
+            logger.warning("Budget Index unavailable", up_transaction_id=up_id)
+            return Failed(up_id, "Budget Index unavailable")
+        if isinstance(exc, UpstreamError):
+            logger.error(
+                "Upstream call failed",
+                up_transaction_id=up_id,
+                status_code=exc.status_code,
+                error=str(exc),
+            )
+            return Failed(up_id, str(exc))
+        logger.error(
+            "Unexpected error forwarding transaction",
+            up_transaction_id=up_id,
+            exc_info=exc,
+        )
+        return Failed(up_id, f"Unexpected error: {exc}")
+
+    async def _settle(self, up_id: str, ynab_id: str | None) -> Settled | Ignored:
+        """Mark the YNAB copy cleared and fix its amount; leave reconciled ones."""
+        tx = await self._up.get_transaction(up_id)
+        if ynab_id:
+            ynab_tx = await self._ynab.get_transaction(ynab_id)
+        else:
+            found = [
+                t
+                for t in await self._ynab.list_transactions(ynab_date(tx))
+                if t.import_id == up_id and not t.deleted
+            ]
+            if not found:
+                logger.warning("Transaction not found in YNAB", up_transaction_id=up_id)
+                return Ignored(up_id, "not found in YNAB")
+            ynab_tx = found[0]
+        if ynab_tx.cleared == "reconciled":
+            logger.info(
+                "Leaving reconciled transaction",
+                up_transaction_id=up_id,
+                ynab_transaction_id=ynab_tx.id,
+            )
+            return Ignored(up_id, "reconciled in YNAB")
+        amount_changed = ynab_tx.amount != tx.amount_milliunits
+        await self._ynab.update_transaction(
+            ynab_tx.id,
+            cleared_status(tx),
+            tx.amount_milliunits if amount_changed else None,
+        )
+        logger.info(
+            "Transaction settled",
+            up_transaction_id=up_id,
+            ynab_transaction_id=ynab_tx.id,
+            amount_changed=amount_changed,
+        )
+        return Settled(up_id, ynab_tx.id)
 
     async def _forward(self, up_id: str) -> Forwarded | Skipped:
         tx = await self._up.get_transaction(up_id)
