@@ -210,6 +210,15 @@ At startup and on `/refresh` the app logs a warning when:
 - no Up account matches a YNAB account (names must be identical); this is also checked on every Budget Index rebuild.
 - the YNAB plan named by `YNAB_BUDGET_ID` has "(Archived" in its name ("YNAB plan looks archived"): set `YNAB_BUDGET_ID` to the active plan. If the plan name can't be read, "Could not read YNAB plan name" is logged and startup continues.
 
+### Debugging with Postman
+Import both files from `docs/postman/` (`up-to-ynab.postman_collection.json` and `up-to-ynab.postman_environment.json`), select the "up-to-ynab (local)" environment and fill in the variables:
+- `baseUrl` defaults to `http://localhost:5001`.
+- `adminToken` is your `ADMIN_TOKEN`; leave it empty when `ADMIN_TOKEN` is unset.
+- `webhookSecret` is the `secret_key` stored for your webhook in the `webhook_secrets` table of the app's database.
+- `upToken`, `ynabToken` and `budgetId` are your Up token, YNAB token and YNAB plan id; `upTransactionId`, `upWebhookId` and `ynabTransactionId` fill the ids the requests use.
+
+The "Webhook > Signed events" requests are signed for you with `webhookSecret`. The unsigned request should get 401. The "Up API" and "YNAB API" folders call the real APIs and only read, except "Ping webhook", which makes Up send a real PING event to the app. Never export the environment with values filled in.
+
 ### Docker Health Checks
 Built-in Docker health checks monitor service availability every 30 seconds.
 

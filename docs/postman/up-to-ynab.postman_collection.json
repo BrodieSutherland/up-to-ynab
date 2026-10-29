@@ -1,0 +1,521 @@
+{
+  "info": {
+    "name": "Up to YNAB",
+    "description": "Debugging requests for up-to-ynab. Import with up-to-ynab.postman_environment.json.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "item": [
+    {
+      "name": "App",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{adminToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Refresh",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/refresh",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "refresh"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Backfill",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/backfill?since=2026-10-01",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "backfill"
+              ],
+              "query": [
+                {
+                  "key": "since",
+                  "value": "2026-10-01"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ledger entry",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/ledger/{{upTransactionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "ledger",
+                "{{upTransactionId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "API docs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/docs",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "docs"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhook",
+      "auth": {
+        "type": "noauth"
+      },
+      "item": [
+        {
+          "name": "Unsigned event (expect 401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/webhook",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "webhook"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"data\":{\"type\":\"webhook-events\",\"id\":\"postman-event-1\",\"attributes\":{\"eventType\":\"PING\",\"createdAt\":\"2026-10-30T09:00:00+11:00\"},\"relationships\":{\"webhook\":{\"data\":{\"type\":\"webhooks\",\"id\":\"{{upWebhookId}}\"}}}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Signed events",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const secret = pm.environment.get(\"webhookSecret\");",
+                  "const body = pm.variables.replaceIn(pm.request.body.raw);",
+                  "const signature = CryptoJS.HmacSHA256(body, secret).toString(CryptoJS.enc.Hex);",
+                  "pm.request.headers.upsert({ key: \"X-Up-Authenticity-Signature\", value: signature });"
+                ]
+              }
+            }
+          ],
+          "item": [
+            {
+              "name": "TRANSACTION_CREATED",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/webhook",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "webhook"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\"data\":{\"type\":\"webhook-events\",\"id\":\"postman-event-1\",\"attributes\":{\"eventType\":\"TRANSACTION_CREATED\",\"createdAt\":\"2026-10-30T09:00:00+11:00\"},\"relationships\":{\"webhook\":{\"data\":{\"type\":\"webhooks\",\"id\":\"{{upWebhookId}}\"}},\"transaction\":{\"data\":{\"type\":\"transactions\",\"id\":\"{{upTransactionId}}\"}}}}}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "TRANSACTION_SETTLED",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/webhook",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "webhook"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\"data\":{\"type\":\"webhook-events\",\"id\":\"postman-event-1\",\"attributes\":{\"eventType\":\"TRANSACTION_SETTLED\",\"createdAt\":\"2026-10-30T09:00:00+11:00\"},\"relationships\":{\"webhook\":{\"data\":{\"type\":\"webhooks\",\"id\":\"{{upWebhookId}}\"}},\"transaction\":{\"data\":{\"type\":\"transactions\",\"id\":\"{{upTransactionId}}\"}}}}}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "TRANSACTION_DELETED",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/webhook",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "webhook"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\"data\":{\"type\":\"webhook-events\",\"id\":\"postman-event-1\",\"attributes\":{\"eventType\":\"TRANSACTION_DELETED\",\"createdAt\":\"2026-10-30T09:00:00+11:00\"},\"relationships\":{\"webhook\":{\"data\":{\"type\":\"webhooks\",\"id\":\"{{upWebhookId}}\"}},\"transaction\":{\"data\":{\"type\":\"transactions\",\"id\":\"{{upTransactionId}}\"}}}}}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "name": "PING",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{baseUrl}}/webhook",
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "path": [
+                    "webhook"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\"data\":{\"type\":\"webhook-events\",\"id\":\"postman-event-1\",\"attributes\":{\"eventType\":\"PING\",\"createdAt\":\"2026-10-30T09:00:00+11:00\"},\"relationships\":{\"webhook\":{\"data\":{\"type\":\"webhooks\",\"id\":\"{{upWebhookId}}\"}}}}}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Up API",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{upToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "Get transaction",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://api.up.com.au/api/v1/transactions/{{upTransactionId}}",
+              "host": [
+                "https://api",
+                "up",
+                "com",
+                "au"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transactions",
+                "{{upTransactionId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List accounts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://api.up.com.au/api/v1/accounts",
+              "host": [
+                "https://api",
+                "up",
+                "com",
+                "au"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "accounts"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List webhooks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://api.up.com.au/api/v1/webhooks",
+              "host": [
+                "https://api",
+                "up",
+                "com",
+                "au"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Webhook delivery logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://api.up.com.au/api/v1/webhooks/{{upWebhookId}}/logs",
+              "host": [
+                "https://api",
+                "up",
+                "com",
+                "au"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "{{upWebhookId}}",
+                "logs"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Ping webhook",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "https://api.up.com.au/api/v1/webhooks/{{upWebhookId}}/ping",
+              "host": [
+                "https://api",
+                "up",
+                "com",
+                "au"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "webhooks",
+                "{{upWebhookId}}",
+                "ping"
+              ]
+            },
+            "description": "Sends a real PING event to the app's webhook URL."
+          }
+        }
+      ]
+    },
+    {
+      "name": "YNAB API",
+      "auth": {
+        "type": "bearer",
+        "bearer": [
+          {
+            "key": "token",
+            "value": "{{ynabToken}}",
+            "type": "string"
+          }
+        ]
+      },
+      "item": [
+        {
+          "name": "List plans",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://api.youneedabudget.com/v1/plans",
+              "host": [
+                "https://api",
+                "youneedabudget",
+                "com"
+              ],
+              "path": [
+                "v1",
+                "plans"
+              ]
+            }
+          }
+        },
+        {
+          "name": "List accounts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://api.youneedabudget.com/v1/plans/{{budgetId}}/accounts",
+              "host": [
+                "https://api",
+                "youneedabudget",
+                "com"
+              ],
+              "path": [
+                "v1",
+                "plans",
+                "{{budgetId}}",
+                "accounts"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get transaction",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://api.youneedabudget.com/v1/plans/{{budgetId}}/transactions/{{ynabTransactionId}}",
+              "host": [
+                "https://api",
+                "youneedabudget",
+                "com"
+              ],
+              "path": [
+                "v1",
+                "plans",
+                "{{budgetId}}",
+                "transactions",
+                "{{ynabTransactionId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Transactions since",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "https://api.youneedabudget.com/v1/plans/{{budgetId}}/transactions?since_date=2026-10-01",
+              "host": [
+                "https://api",
+                "youneedabudget",
+                "com"
+              ],
+              "path": [
+                "v1",
+                "plans",
+                "{{budgetId}}",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "since_date",
+                  "value": "2026-10-01"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
