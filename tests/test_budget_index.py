@@ -383,3 +383,32 @@ def test_excluded_rows_do_not_key_import_payee_name():
         )
         == {}
     )
+
+
+def test_matched_count():
+    index = build_budget_index(UP[:2], [ynab_account("y1", "Spending")])
+
+    assert index.matched_count() == 1
+
+
+async def test_rebuild_with_no_match_warns():
+    h = Harness([up_account("u1", "Spending"), up_account("u2", "Saver")], [])
+
+    with capture_logs() as logs:
+        await h.holder.rebuild()
+
+    assert {
+        "event": "No Up account matched a YNAB account",
+        "up_accounts": 2,
+        "hint": "YNAB account names must equal Up account names exactly",
+        "log_level": "warning",
+    } in logs
+
+
+async def test_rebuild_with_a_match_does_not_warn():
+    h = Harness([up_account("u1", "Spending")], [ynab_account("y1", "Spending")])
+
+    with capture_logs() as logs:
+        await h.holder.rebuild()
+
+    assert "No Up account matched a YNAB account" not in [e["event"] for e in logs]

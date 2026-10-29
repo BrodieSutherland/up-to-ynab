@@ -23,7 +23,14 @@ from database.webhook_secrets import SqlWebhookSecretStore, WebhookSecretStore
 from forwarding.backfill import backfill
 from forwarding.budget_index import BudgetIndexHolder, rebuild_periodically
 from forwarding.forwarder import Forwarder, Settled
-from forwarding.ledger import Deleted, Failed, Forwarded, Skipped, SqlLedger
+from forwarding.ledger import (
+    Deleted,
+    Failed,
+    Forwarded,
+    LedgerReader,
+    Skipped,
+    SqlLedger,
+)
 from models.up_models import UpWebhookEvent
 from utils.config import Settings
 from utils.logging import setup_logging
@@ -79,6 +86,34 @@ class BackfillResponse(BaseModel):
     }
 
 
+class LedgerEntryResponse(BaseModel):
+    """A Ledger row."""
+
+    up_transaction_id: str
+    status: str
+    reason: str | None
+    reason_code: str | None
+    ynab_transaction_id: str | None
+    attempts: int
+    updated_at: datetime
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "up_transaction_id": "tx1",
+                    "status": "skipped",
+                    "reason": "Up account not in YNAB",
+                    "reason_code": "account_not_in_ynab",
+                    "ynab_transaction_id": None,
+                    "attempts": 2,
+                    "updated_at": "2026-10-30T01:02:03Z",
+                }
+            ]
+        }
+    }
+
+
 # Australian Eastern Standard Time; during daylight saving the cut-off is an
 # hour early, which only re-checks handled transactions.
 AEST = timezone(timedelta(hours=10))
@@ -96,6 +131,8 @@ class Services:
     forwarder: Forwarder
     budget_index: IndexRebuilder
     webhook_secrets: WebhookSecretStore
+    ynab: YnabClient
+    ledger: LedgerReader
 
 
 def build_services(
@@ -103,12 +140,15 @@ def build_services(
 ) -> Services:
     """Wire services from settings and clients; the only place they are built."""
     index = BudgetIndexHolder(up, ynab)
-    forwarder = Forwarder(up, ynab, index, SqlLedger(database.get_session))
+    ledger = SqlLedger(database.get_session)
+    forwarder = Forwarder(up, ynab, index, ledger)
     return Services(
         up=up,
         forwarder=forwarder,
         budget_index=index,
         webhook_secrets=SqlWebhookSecretStore(database.get_session),
+        ynab=ynab,
+        ledger=ledger,
     )
 
 
@@ -225,6 +265,23 @@ async def require_admin(
         )
 
 
+async def warn_if_plan_archived(ynab: YnabClient) -> None:
+    """Warn if the configured YNAB plan looks archived. Never raises upstream errors."""
+    try:
+        name = await ynab.plan_name()
+    except UpstreamError as e:
+        logger.warning(
+            "Could not read YNAB plan name", status_code=e.status_code, error=str(e)
+        )
+        return
+    if name is not None and "(Archived" in name:
+        logger.warning(
+            "YNAB plan looks archived",
+            plan_name=name,
+            hint="set YNAB_BUDGET_ID to the active plan",
+        )
+
+
 async def _run_startup_tasks(settings: Settings, services: Services) -> None:
     """Reconcile the Up webhooks and build the budget index."""
     for name in settings.ignored_env_vars():
@@ -244,6 +301,8 @@ async def _run_startup_tasks(settings: Settings, services: Services) -> None:
             await services.budget_index.rebuild()
         except Exception as e:
             logger.error("Failed to build budget index on startup", error=str(e))
+
+        await warn_if_plan_archived(services.ynab)
 
     except Exception as e:
         logger.error(
@@ -464,6 +523,7 @@ def create_app(
                 app.state.settings.webhook_url,
             )
             await app.state.services.budget_index.rebuild()
+            await warn_if_plan_archived(app.state.services.ynab)
             return {"status": "success", "message": "Data refreshed successfully"}
 
         except Exception as exc:
@@ -472,6 +532,24 @@ def create_app(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to refresh data",
             )
+
+    @app.get(
+        "/ledger/{up_transaction_id}",
+        tags=["admin"],
+        response_model=LedgerEntryResponse,
+        dependencies=[Depends(require_admin)],
+        summary="Show what happened to an Up transaction",
+        responses={404: {"description": "No Ledger entry for this transaction"}},
+    )
+    async def show_ledger_entry(up_transaction_id: str) -> Dict[str, Any]:
+        """The Ledger row for an Up transaction id."""
+        view = await app.state.services.ledger.entry(up_transaction_id)
+        if view is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No Ledger entry for this transaction",
+            )
+        return asdict(view)
 
     @app.post(
         "/backfill",

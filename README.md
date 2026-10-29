@@ -137,6 +137,7 @@ Transfers between your Up accounts are recognised by Up's `transferAccount` rela
 - `GET /health` - Health check (`status`, `service`, `version` 3.0.0)
 - `POST /webhook` - Up Bank webhook receiver. Needs a valid `X-Up-Authenticity-Signature` (HMAC-SHA256 of the raw body under the secret of a webhook this app created), else 401. Answers 200 with status `forwarded`, `settled`, `skipped`, `deleted`, `flagged` or `ignored`, and 503 on failure so Up retries. `TRANSACTION_CREATED`, `TRANSACTION_SETTLED` and `TRANSACTION_DELETED` are acted on: a deleted transaction that was forwarded is deleted in YNAB if still uncleared, or flagged red if you have cleared or reconciled it; a settled transaction is marked cleared in YNAB (and its amount corrected) unless you have reconciled it.
 - `GET /refresh` - Reconciles webhooks, then rebuilds the Budget Index. With `ADMIN_TOKEN` set: `curl -H "Authorization: Bearer $ADMIN_TOKEN" https://your-domain.com/refresh` (401 otherwise)
+- `GET /ledger/{up_transaction_id}` - Shows what happened to one Up transaction: `status` (forwarded, skipped, failed or deleted), `reason`, `reason_code`, `ynab_transaction_id`, `attempts` and `updated_at` (UTC); 404 if nothing is recorded. With `ADMIN_TOKEN` set: `curl -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:5001/ledger/<up-transaction-id>` answers e.g. `{"up_transaction_id": "abc", "status": "skipped", "reason": "Up account not in YNAB", "reason_code": "account_not_in_ynab", "ynab_transaction_id": null, "attempts": 2, "updated_at": "2026-10-30T01:02:03Z"}`.
 - `POST /backfill?since=YYYY-MM-DD` - Forwards Up transactions created on or after that day (Australian time) that YNAB doesn't have yet, e.g. after downtime or after adding a YNAB account that was missing (run `/refresh` first). Handled transactions are left alone; transactions skipped because their Up account wasn't in YNAB are retried (as ordinary transactions, never as a YNAB transfer, since the other leg may already be in YNAB, so those two legs aren't linked). Stops after 150 YNAB creates and answers `more_remaining: true`; run it again. With `ADMIN_TOKEN` set: `curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" "http://localhost:5001/backfill?since=2026-10-01"` answers e.g. `{"forwarded": 12, "skipped": 3, "failed": 0, "already_handled": 40, "more_remaining": false}`. 502 if Up can't be listed.
 - `GET /docs` - Interactive API documentation
 
@@ -203,6 +204,11 @@ pip install -r requirements-dev.txt
 - Structured JSON logging in production
 - Colored console logging in development
 - Configurable log levels via `DEBUG_MODE`
+
+### Setup warnings
+At startup and on `/refresh` the app logs a warning when:
+- no Up account matches a YNAB account (names must be identical); this is also checked on every Budget Index rebuild.
+- the YNAB plan named by `YNAB_BUDGET_ID` has "(Archived" in its name ("YNAB plan looks archived"): set `YNAB_BUDGET_ID` to the active plan. If the plan name can't be read, "Could not read YNAB plan name" is logged and startup continues.
 
 ### Docker Health Checks
 Built-in Docker health checks monitor service availability every 30 seconds.

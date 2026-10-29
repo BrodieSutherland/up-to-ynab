@@ -316,3 +316,36 @@ async def test_token_never_logged_or_in_errors(detail):
 
     assert TOKEN not in str(exc_info.value)
     assert TOKEN not in repr(logs)
+
+
+class TestPlanName:
+    PLANS = [
+        {"id": "other", "name": "Other"},
+        {"id": "test_budget_id", "name": "Home (Archived 2026-01-01)"},
+    ]
+
+    async def test_picks_the_configured_plan(self):
+        client, requests = make_client(respond(200, {"data": {"plans": self.PLANS}}))
+
+        assert await client.plan_name() == "Home (Archived 2026-01-01)"
+        assert requests[0].url.path == "/v1/plans"
+
+    async def test_absent_plan_is_none(self):
+        client, _ = make_client(
+            respond(200, {"data": {"plans": self.PLANS[:1], "default_plan": None}})
+        )
+
+        assert await client.plan_name() is None
+
+    async def test_error_status_raises(self):
+        client, _ = make_client(respond(500, {}))
+
+        with pytest.raises(UpstreamError) as excinfo:
+            await client.plan_name()
+        assert excinfo.value.status_code == 500
+
+    async def test_unexpected_shape_raises(self):
+        client, _ = make_client(respond(200, {"data": {}}))
+
+        with pytest.raises(UpstreamError):
+            await client.plan_name()

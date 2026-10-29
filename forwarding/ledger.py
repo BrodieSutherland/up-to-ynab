@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Protocol
 
 import structlog
@@ -55,6 +56,27 @@ class LedgerState:
     status: str  # forwarded, skipped, failed or deleted
     ynab_transaction_id: str | None
     reason_code: str | None = None
+
+
+@dataclass(frozen=True)
+class LedgerEntryView:
+    """A stored Ledger row, for inspection (updated_at is always UTC-aware)."""
+
+    up_transaction_id: str
+    status: str
+    reason: str | None
+    reason_code: str | None
+    ynab_transaction_id: str | None
+    attempts: int
+    updated_at: datetime
+
+
+class LedgerReader(Protocol):
+    """Read-only view of the Ledger."""
+
+    async def entry(self, up_transaction_id: str) -> LedgerEntryView | None:
+        """The stored row, or None if nothing is recorded."""
+        ...
 
 
 # Skips a backfill (and only a backfill) may retry: the account may have been
@@ -135,6 +157,24 @@ class SqlLedger:
         if entry is None:
             return None
         return LedgerState(entry.status, entry.ynab_transaction_id, entry.reason_code)
+
+    async def entry(self, up_transaction_id: str) -> LedgerEntryView | None:
+        async with self._session_factory() as session:
+            row = await self._entry(session, up_transaction_id)
+        if row is None:
+            return None
+        updated_at = row.updated_at
+        if updated_at.tzinfo is None:  # SQLite drops the zone; stored as UTC
+            updated_at = updated_at.replace(tzinfo=UTC)
+        return LedgerEntryView(
+            up_transaction_id=row.up_transaction_id,
+            status=row.status,
+            reason=row.reason,
+            reason_code=row.reason_code,
+            ynab_transaction_id=row.ynab_transaction_id,
+            attempts=row.attempts,
+            updated_at=updated_at,
+        )
 
     async def attempts(self, up_transaction_id: str) -> int:
         """How many attempts are recorded (0 if none); for inspection."""

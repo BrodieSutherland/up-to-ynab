@@ -12,6 +12,7 @@ from clients.errors import UpstreamError
 from clients.up import HttpUpClient
 from forwarding.budget_index import BudgetIndex, YnabAccountRef
 from forwarding.forwarder import Forwarder
+from forwarding.ledger import Skipped
 from models.up_models import UpTransaction, UpWebhook
 from tests.fakes.budget_index import FakeIndexHolder
 from tests.fakes.ledger import Entry, InMemoryLedger
@@ -29,14 +30,16 @@ INDEX = BudgetIndex({"test-account-id": YnabAccountRef("acct-1", "tp-1")}, {})
 
 def make_services(up, ynab=None, holder=None, ledger=None, secrets=None) -> Services:
     holder = holder or FakeIndexHolder(INDEX)
-    forwarder = Forwarder(
-        up, ynab or FakeYnabClient(), holder, ledger or InMemoryLedger()
-    )
+    ynab = ynab or FakeYnabClient()
+    ledger = ledger or InMemoryLedger()
+    forwarder = Forwarder(up, ynab, holder, ledger)
     return Services(
         up=up,
         forwarder=forwarder,
         budget_index=holder,
         webhook_secrets=secrets or InMemoryWebhookSecretStore(),
+        ynab=ynab,
+        ledger=ledger,
     )
 
 
@@ -888,3 +891,103 @@ class TestBackfill:
 
         assert response.json()["forwarded"] == 1
         assert ledger.entries["test-transaction-id"].status == "forwarded"
+
+
+class TestLedgerEndpoint:
+    def _app(self, test_settings, fake_up, holder, ledger, token=None):
+        settings = test_settings.model_copy(update={"admin_token": token})
+        return create_app(
+            settings, make_services(fake_up, holder=holder, ledger=ledger)
+        )
+
+    async def _seeded(self):
+        ledger = InMemoryLedger()
+        await ledger.record(
+            Skipped("tx1", "Up account not in YNAB", "account_not_in_ynab")
+        )
+        return ledger
+
+    async def test_returns_the_entry(self, test_settings, fake_up, holder):
+        ledger = await self._seeded()
+        with TestClient(self._app(test_settings, fake_up, holder, ledger)) as c:
+            response = c.get("/ledger/tx1")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "up_transaction_id": "tx1",
+            "status": "skipped",
+            "reason": "Up account not in YNAB",
+            "reason_code": "account_not_in_ynab",
+            "ynab_transaction_id": None,
+            "attempts": 1,
+            "updated_at": "2026-10-30T01:02:03Z",
+        }
+
+    def test_unknown_id_is_404(self, test_settings, fake_up, holder):
+        with TestClient(
+            self._app(test_settings, fake_up, holder, InMemoryLedger())
+        ) as c:
+            response = c.get("/ledger/nope")
+
+        assert response.status_code == 404
+        assert response.json() == {"detail": "No Ledger entry for this transaction"}
+
+    async def test_needs_admin_token_when_set(self, test_settings, fake_up, holder):
+        ledger = await self._seeded()
+        with TestClient(self._app(test_settings, fake_up, holder, ledger, "tok")) as c:
+            missing = c.get("/ledger/tx1")
+            right = c.get("/ledger/tx1", headers={"Authorization": "Bearer tok"})
+
+        assert missing.status_code == 401
+        assert right.status_code == 200
+
+
+class TestPlanWarnings:
+    def _events(self, logs, event):
+        return [e for e in logs if e["event"] == event]
+
+    def test_archived_plan_warns_at_startup(self, test_settings, fake_up, holder):
+        ynab = FakeYnabClient(plan_name="Home (Archived 2026-01-01)")
+        app = create_app(test_settings, make_services(fake_up, ynab, holder))
+        with capture_logs() as logs:
+            with TestClient(app):
+                pass
+
+        warning = self._events(logs, "YNAB plan looks archived")
+        assert len(warning) == 1
+        assert warning[0]["plan_name"] == "Home (Archived 2026-01-01)"
+        assert warning[0]["hint"] == "set YNAB_BUDGET_ID to the active plan"
+
+    def test_active_plan_does_not_warn(self, test_settings, fake_up, holder):
+        app = create_app(test_settings, make_services(fake_up, None, holder))
+        with capture_logs() as logs:
+            with TestClient(app):
+                pass
+
+        assert not self._events(logs, "YNAB plan looks archived")
+        assert not self._events(logs, "Could not read YNAB plan name")
+
+    def test_plan_name_failure_is_not_fatal(self, test_settings, fake_up, holder):
+        ynab = FakeYnabClient(
+            errors={"plan_name": UpstreamError("GET /plans -> 500", 500)}
+        )
+        app = create_app(test_settings, make_services(fake_up, ynab, holder))
+        with capture_logs() as logs:
+            with TestClient(app) as c:
+                health = c.get("/health").status_code
+
+        warning = self._events(logs, "Could not read YNAB plan name")
+        assert health == 200
+        assert holder.rebuild_count == 1
+        assert len(warning) == 1
+        assert warning[0]["status_code"] == 500
+
+    def test_refresh_checks_again(self, test_settings, fake_up, holder):
+        ynab = FakeYnabClient(plan_name="Home (Archived 2026-01-01)")
+        app = create_app(test_settings, make_services(fake_up, ynab, holder))
+        with capture_logs() as logs:
+            with TestClient(app) as c:
+                assert c.get("/refresh").status_code == 200
+
+        assert ynab.plan_name_calls == 2
+        assert len(self._events(logs, "YNAB plan looks archived")) == 2

@@ -56,6 +56,9 @@ class BudgetIndex:
         found = self.accounts.get(up_account_id)
         return found if found is not None else UnknownUpAccount()
 
+    def matched_count(self) -> int:
+        return sum(isinstance(a, YnabAccountRef) for a in self.accounts.values())
+
     def category_match(self, payee: str) -> str | None:
         return self.category_by_payee.get(payee)
 
@@ -151,9 +154,15 @@ class BudgetIndexHolder:
         logger.info(
             "Budget Index rebuilt",
             up_accounts=len(up_accounts),
-            matched=sum(isinstance(a, YnabAccountRef) for a in index.accounts.values()),
+            matched=index.matched_count(),
             categorised_payees=len(index.category_by_payee),
         )
+        if index.matched_count() == 0:
+            logger.warning(
+                "No Up account matched a YNAB account",
+                up_accounts=len(up_accounts),
+                hint="YNAB account names must equal Up account names exactly",
+            )
 
     async def current_for(self, up_account_id: str) -> BudgetIndex:
         """The index, rebuilt lazily (at most once a minute) for an unknown account."""

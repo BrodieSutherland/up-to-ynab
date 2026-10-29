@@ -64,6 +64,7 @@ class FakeYnabClient:
         transactions=(),
         errors: dict[str, Exception] | None = None,
         already_imported: bool = False,
+        plan_name: str | None = "Test Plan",
     ):
         self.accounts: list[YnabAccount] = list(accounts)
         self.transactions: list[YnabTransaction] = list(transactions)
@@ -73,6 +74,8 @@ class FakeYnabClient:
         self.since_dates: list[str] = []
         self.updates: list[tuple[str, str, int | None]] = []
         self.list_accounts_calls = 0
+        self._plan_name = plan_name
+        self.plan_name_calls = 0
         self.deleted_ids: list[str] = []
         self.flagged: list[tuple[str, str]] = []
 
@@ -123,3 +126,8 @@ class FakeYnabClient:
     async def flag_transaction(self, ynab_id: str, flag_color: str = "red") -> None:
         self._maybe_raise("flag_transaction")
         self.flagged.append((ynab_id, flag_color))
+
+    async def plan_name(self) -> str | None:
+        self.plan_name_calls += 1
+        self._maybe_raise("plan_name")
+        return self._plan_name

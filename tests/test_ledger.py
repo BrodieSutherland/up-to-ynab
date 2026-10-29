@@ -1,9 +1,12 @@
+from datetime import UTC, datetime
+
 import pytest
 
 from forwarding.ledger import (
     Deleted,
     Failed,
     Forwarded,
+    LedgerEntryView,
     LedgerState,
     Skipped,
     SqlLedger,
@@ -200,3 +203,60 @@ async def test_mirror_and_uncoded_skips_are_never_overwritten(ledger):
 )
 def test_backfill_retryable(state, expected):
     assert backfill_retryable(state) is expected
+
+
+async def test_entry_view_of_a_skipped_transaction(ledger):
+    await ledger.record(Skipped("tx1", "Up account not in YNAB", "account_not_in_ynab"))
+    await ledger.record(Skipped("tx1", "Mirror side of a Transfer", "mirror_side"))
+
+    view = await ledger.entry("tx1")
+
+    assert view is not None
+    assert view.updated_at.tzinfo is not None
+    assert view.updated_at.utcoffset().total_seconds() == 0
+    assert (
+        view.up_transaction_id,
+        view.status,
+        view.reason,
+        view.reason_code,
+        view.ynab_transaction_id,
+        view.attempts,
+    ) == (
+        "tx1",
+        "skipped",
+        "Mirror side of a Transfer",
+        "mirror_side",
+        None,
+        2,
+    )
+
+
+async def test_entry_missing_is_none(ledger):
+    assert await ledger.entry("nope") is None
+
+
+async def test_sql_entry_maps_every_column_as_utc(database):
+    from database.models import LedgerEntry
+
+    async with database.get_session() as session:
+        session.add(
+            LedgerEntry(
+                up_transaction_id="tx1",
+                status="skipped",
+                reason="Up account not in YNAB",
+                reason_code="account_not_in_ynab",
+                attempts=2,
+                updated_at=datetime(2026, 10, 30, 1, 2, 3),
+            )
+        )
+        await session.commit()
+
+    assert await SqlLedger(database.get_session).entry("tx1") == LedgerEntryView(
+        "tx1",
+        "skipped",
+        "Up account not in YNAB",
+        "account_not_in_ynab",
+        None,
+        2,
+        datetime(2026, 10, 30, 1, 2, 3, tzinfo=UTC),
+    )

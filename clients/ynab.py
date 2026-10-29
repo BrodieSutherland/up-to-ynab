@@ -27,6 +27,10 @@ class YnabClient(Protocol):
         self, transaction: YnabTransactionDetail
     ) -> Created | AlreadyImported: ...
 
+    async def plan_name(self) -> str | None:
+        """The configured plan's name, or None if it is not in the plan list."""
+        ...
+
     async def list_accounts(self) -> list[YnabAccount]: ...
 
     async def list_transactions(self, since_date: str) -> list[YnabTransaction]: ...
@@ -51,6 +55,7 @@ class HttpYnabClient:
         self._http = http
         self._token = token
         self._base_url = base_url.rstrip("/")
+        self._plan_id = plan_id
         self._plan = f"/plans/{plan_id}"
 
     async def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
@@ -95,6 +100,16 @@ class HttpYnabClient:
             return Created(ynab_id=str(body["data"]["transaction"]["id"]))
         except (KeyError, TypeError) as exc:
             raise UpstreamError(f"POST {path} returned unexpected shape") from exc
+
+    async def plan_name(self) -> str | None:
+        body = await self._request("GET", "/plans")
+        try:
+            return next(
+                (p["name"] for p in body["data"]["plans"] if p["id"] == self._plan_id),
+                None,
+            )
+        except (KeyError, TypeError) as exc:
+            raise UpstreamError("GET /plans returned unexpected shape") from exc
 
     async def list_accounts(self) -> list[YnabAccount]:
         path = f"{self._plan}/accounts"
