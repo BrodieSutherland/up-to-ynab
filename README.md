@@ -153,7 +153,7 @@ Up webhook ──▶ /webhook ──▶ Forwarder
 - `/webhook` and `/refresh` have no authentication, and Up's `X-Up-Authenticity-Signature` is not verified. Anyone who knows the URL can make the app fetch and forward a transaction (only real Up transactions, via your token) or trigger a rebuild. Keep the URL private, or put the app behind a reverse proxy that restricts access.
 - A deleted transaction whose YNAB copy was cleared or reconciled is flagged red for review, not deleted.
 - A deleted event for a transaction that reached YNAB through the already-imported path (no YNAB id recorded) is ignored with a warning; remove it by hand.
-- The Category match uses the Up description, so a payee you rename in YNAB is no longer matched.
+- If Up starts describing a merchant differently (for example once it recognises the merchant), the new description has no Category match until you categorise it in YNAB again. Payees renamed by your YNAB rename rules are matched.
 - An Up account with no matching YNAB account is skipped, and those transactions are not retried after you add the account.
 - The database schema is created on startup; there are no migrations.
 

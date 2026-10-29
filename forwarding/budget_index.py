@@ -99,10 +99,14 @@ def build_budget_index(
 
 
 def _category_by_payee(transactions: Iterable[YnabTransaction]) -> dict[str, str]:
-    """Payees whose counted transactions all share exactly one category.
+    """Names whose counted transactions all share exactly one category.
 
-    Deleted transactions, transfers, splits and uncategorised or payee-less
-    transactions are not counted. Payee names match exactly.
+    Each transaction is keyed by its YNAB payee name and, when recorded, its
+    import payee name (the name before YNAB rename rules, i.e. the Up
+    description this app sent). A key seen with two categories, from either
+    source, has no match. Deleted transactions, transfers, splits and
+    uncategorised or payee-less transactions are not counted. Names match
+    exactly.
     """
     seen: dict[str, set[str]] = {}
     for t in transactions:
@@ -114,7 +118,11 @@ def _category_by_payee(transactions: Iterable[YnabTransaction]) -> dict[str, str
             or t.payee_name is None
         ):
             continue
-        seen.setdefault(t.payee_name, set()).add(t.category_id)
+        keys = [t.payee_name]
+        if t.import_payee_name:
+            keys.append(t.import_payee_name)
+        for key in keys:
+            seen.setdefault(key, set()).add(t.category_id)
     return {payee: next(iter(c)) for payee, c in seen.items() if len(c) == 1}
 
 

@@ -38,6 +38,7 @@ def ynab_transaction(
     date: str = "2024-01-01",
     cleared: str | None = None,
     import_id: str | None = None,
+    import_payee_name: str | None = None,
 ) -> YnabTransaction:
     return YnabTransaction(
         id=id,
@@ -45,6 +46,7 @@ def ynab_transaction(
         amount=amount,
         cleared=cleared,
         import_id=import_id,
+        import_payee_name=import_payee_name,
         payee_name=payee_name,
         category_id=category_id,
         transfer_account_id=transfer_account_id,

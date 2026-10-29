@@ -43,7 +43,7 @@ Who a transaction was paid to or received from, as Up describes it.
 _Avoid_: merchant, description
 
 **Category match**:
-The YNAB category a Payee has always been given in the customer's past YNAB transactions. A Payee with zero or several past categories has no Category match.
+The YNAB category a Payee has always been given in the customer's past YNAB transactions, found by the Payee's name either as YNAB shows it or as it was imported before YNAB renamed it. A Payee with zero or several past categories has no Category match.
 _Avoid_: payee mapping, category mapping
 
 ## Processing

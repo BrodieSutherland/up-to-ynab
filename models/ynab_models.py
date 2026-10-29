@@ -147,4 +147,5 @@ class YnabTransaction(BaseModel):
     deleted: bool
     cleared: Optional[str] = None
     import_id: Optional[str] = None
+    import_payee_name: Optional[str] = None
     subtransactions: list[dict] = []

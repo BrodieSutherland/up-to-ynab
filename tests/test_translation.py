@@ -7,9 +7,12 @@ from forwarding.budget_index import (
     BudgetIndex,
     NotInYnab,
     YnabAccountRef,
+    build_budget_index,
 )
 from forwarding.translation import Skip, cleared_status, translate
 from models.up_models import UpTransaction
+from tests.fakes.up import up_accounts_fixture
+from tests.fakes.ynab import ynab_account, ynab_transaction
 
 FIXTURES = Path(__file__).parent / "fixtures" / "up" / "transactions"
 SP = YnabAccountRef("ynab-spending", "tp-spending")
@@ -371,3 +374,21 @@ def test_uses_matched_ynab_account_id():
     index = BudgetIndex({"accounts-1": YnabAccountRef("other-acct", "tp-9")})
 
     assert translate(load("purchase_plain_1"), index).account_id == "other-acct"
+
+
+def test_category_match_uses_import_payee_name_of_renamed_payee():
+    index = build_budget_index(
+        up_accounts_fixture(),
+        [ynab_account("y1", "Spending")],
+        [
+            ynab_transaction(
+                "t1", "Renamed Payee", "cat-renamed", import_payee_name="Payee 1"
+            )
+        ],
+    )
+
+    result = translate(load("purchase_plain_1"), index)
+
+    assert result.payee_name == "Payee 1"
+    assert result.category_id == "cat-renamed"
+    assert result.account_id == "y1"

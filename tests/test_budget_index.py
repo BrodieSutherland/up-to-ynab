@@ -313,3 +313,73 @@ async def test_failed_timed_rebuild_keeps_old_index_and_loop_continues():
     assert h.up.list_accounts_calls == 3
     index = await h.holder.current_for("u1")
     assert index.account("u1") == YnabAccountRef("y1", "tp-y1")
+
+
+def _category_map(transactions):
+    return dict(build_budget_index(UP, [], transactions).category_by_payee)
+
+
+def test_category_match_keyed_by_import_payee_name():
+    index = build_budget_index(
+        UP,
+        [],
+        [
+            ynab_transaction(
+                "t1",
+                "Woolworths",
+                "cat-groceries",
+                import_payee_name="WOOLWORTHS 1234 SYDNEY",
+            )
+        ],
+    )
+
+    assert index.category_match("WOOLWORTHS 1234 SYDNEY") == "cat-groceries"
+    assert index.category_match("Woolworths") == "cat-groceries"
+
+
+def test_import_payee_name_conflict_removes_only_that_key():
+    index = build_budget_index(
+        UP,
+        [],
+        [
+            ynab_transaction(
+                "t1",
+                "Woolworths",
+                "cat-groceries",
+                import_payee_name="WOOLWORTHS 1234 SYDNEY",
+            ),
+            ynab_transaction("t2", "WOOLWORTHS 1234 SYDNEY", "cat-dining"),
+        ],
+    )
+
+    assert index.category_match("WOOLWORTHS 1234 SYDNEY") is None
+    assert index.category_match("Woolworths") == "cat-groceries"
+
+
+def test_import_payee_name_is_optional():
+    assert _category_map(
+        [
+            ynab_transaction("t1", "Cafe", "cat-a"),
+            ynab_transaction(
+                "t2", "Woolworths", "cat-groceries", import_payee_name="WOOLIES 1"
+            ),
+        ]
+    ) == {"Cafe": "cat-a", "Woolworths": "cat-groceries", "WOOLIES 1": "cat-groceries"}
+
+
+def test_excluded_rows_do_not_key_import_payee_name():
+    kw = {"import_payee_name": "RAW 1"}
+    assert (
+        _category_map(
+            [
+                ynab_transaction("t1", "A", "cat-a", deleted=True, **kw),
+                ynab_transaction("t2", "B", "cat-a", transfer_account_id="x", **kw),
+                ynab_transaction("t3", "C", None, **kw),
+                ynab_transaction(
+                    "t4", "D", "cat-a", subtransactions=[{"id": "s"}], **kw
+                ),
+                ynab_transaction("t5", None, "cat-a", **kw),
+            ]
+        )
+        == {}
+    )

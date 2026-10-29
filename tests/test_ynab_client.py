@@ -136,6 +136,8 @@ class TestListings:
             "subtransactions": [{"id": "s1", "amount": -5000}],
             "cleared": "cleared",
             "import_id": "up-9",
+            "import_payee_name": "SHOP 123 SYDNEY",
+            "import_payee_name_original": "SHOP 123 SYDNEY AU",
         }
         client, requests = make_client(respond(200, {"data": {"transactions": [item]}}))
 
@@ -148,7 +150,21 @@ class TestListings:
         assert transactions[0].category_id == "cat-1"
         assert transactions[0].cleared == "cleared"
         assert transactions[0].import_id == "up-9"
+        assert transactions[0].import_payee_name == "SHOP 123 SYDNEY"
         assert transactions[0].subtransactions == [{"id": "s1", "amount": -5000}]
+
+    async def test_list_transactions_without_import_payee_name(self):
+        item = {
+            "id": "t1",
+            "date": "2024-01-02",
+            "amount": -5000,
+            "deleted": False,
+        }
+        client, _ = make_client(respond(200, {"data": {"transactions": [item]}}))
+
+        transactions = await client.list_transactions("1970-01-01")
+
+        assert transactions[0].import_payee_name is None
 
     async def test_bad_listing_raises(self):
         client, _ = make_client(respond(200, {"data": {"accounts": [{"id": "a"}]}}))
