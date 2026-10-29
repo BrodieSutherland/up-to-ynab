@@ -1,6 +1,6 @@
 # UP to YNAB Transaction Sync
 
-Automatically sync transactions from [Up Bank](https://up.com.au/) to [YNAB](https://www.youneedabudget.com/) using webhooks and APIs.
+Automatically sync transactions from [Up Bank](https://up.com.au/) to [YNAB](https://www.ynab.com/) using webhooks and APIs.
 
 [![CI](https://github.com/BrodieSutherland/up-to-ynab/actions/workflows/ci.yml/badge.svg)](https://github.com/BrodieSutherland/up-to-ynab/actions/workflows/ci.yml)
 [![Docker](https://img.shields.io/docker/v/brodiesutherland/up-to-ynab?label=docker)](https://hub.docker.com/r/brodiesutherland/up-to-ynab)
@@ -16,7 +16,7 @@ Automatically sync transactions from [Up Bank](https://up.com.au/) to [YNAB](htt
 - **Transfers** booked once, as YNAB transfers
 - **Health monitoring** with built-in endpoints
 - **Docker ready** with production and development configurations
-- **Comprehensive testing** with >95% coverage
+- **Comprehensive testing** with a 97% branch-coverage gate in CI
 - **Security focused** with non-root containers and vulnerability scanning
 
 ## Quick Start
@@ -24,8 +24,8 @@ Automatically sync transactions from [Up Bank](https://up.com.au/) to [YNAB](htt
 ### Prerequisites
 
 - Up Bank API token ([get one here](https://developer.up.com.au/))
-- YNAB Personal Access Token ([get one here](https://app.youneedabudget.com/settings/developer))
-- YNAB Budget ID
+- YNAB Personal Access Token ([get one here](https://app.ynab.com/settings/developer))
+- YNAB Budget ID: the UUID in the YNAB web app's URL when the budget is open (`app.ynab.com/<budget-id>/budget`). Use the budget you actually work in, not an archived one; the app accepts any budget your token can read.
 - YNAB accounts named exactly like your Up accounts
 - Public webhook URL (for receiving Up Bank notifications)
 
@@ -54,6 +54,29 @@ Automatically sync transactions from [Up Bank](https://up.com.au/) to [YNAB](htt
    ```
 
 The application will be available at `http://localhost:5001`.
+
+### Prebuilt Image
+
+Images are published to Docker Hub as `brodiesutherland/up-to-ynab` (`3.0.0`, `3.0`, `3` and `latest`). Pin a version so an upgrade only happens when you choose:
+
+```yaml
+services:
+  up-to-ynab:
+    image: brodiesutherland/up-to-ynab:3.0.0
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      UP_API_TOKEN: ${UP_API_TOKEN}
+      YNAB_API_TOKEN: ${YNAB_API_TOKEN}
+      YNAB_BUDGET_ID: ${YNAB_BUDGET_ID}
+      WEBHOOK_URL: https://your-domain.com/webhook
+      DATABASE_URL: sqlite+aiosqlite:////app/data/up_to_ynab.db
+    volumes:
+      - ./data:/app/data
+```
+
+The container runs as uid 1000, so the host `data` folder must be writable by that user. Without the volume, the Ledger is lost whenever the container is recreated.
 
 ### Development Setup
 
@@ -124,6 +147,15 @@ Up webhook ──▶ /webhook ──▶ Forwarder
 
 - **Budget Index**: YNAB accounts and the Category match, built at startup, every 6 hours, on `/refresh`, and lazily for an unknown Up account.
 - **Ledger**: one row per Up transaction in the SQLite `ledger_entries` table; forwarded and skipped are final, failed is retried on redelivery.
+
+## Limitations
+
+- `/webhook` and `/refresh` have no authentication, and Up's `X-Up-Authenticity-Signature` is not verified. Anyone who knows the URL can make the app fetch and forward a transaction (only real Up transactions, via your token) or trigger a rebuild. Keep the URL private, or put the app behind a reverse proxy that restricts access.
+- Only `TRANSACTION_CREATED` is acted on. Settled and deleted events are ignored, so a cancelled hold stays in YNAB until you remove it.
+- Transactions are always created as uncleared.
+- The Category match uses the Up description, so a payee you rename in YNAB is no longer matched.
+- An Up account with no matching YNAB account is skipped, and those transactions are not retried after you add the account.
+- The database schema is created on startup; there are no migrations.
 
 ## Deployment Options
 
@@ -216,10 +248,10 @@ flake8 .
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create a feature branch from `develop` (`git checkout -b feature/amazing-feature develop`)
+3. Commit your changes, and run `black . && isort . && flake8 .` and `pytest -q --cov --cov-branch`
+4. Push the branch (`git push origin feature/amazing-feature`)
+5. Open a pull request into `develop`. `main` only receives release merges from `develop`.
 
 ## Security
 
