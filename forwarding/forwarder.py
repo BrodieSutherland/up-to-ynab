@@ -118,7 +118,19 @@ class Forwarder:
         """Mark the YNAB copy cleared and fix its amount; leave reconciled ones."""
         tx = await self._up.get_transaction(up_id)
         if ynab_id:
-            ynab_tx = await self._ynab.get_transaction(ynab_id)
+            try:
+                ynab_tx = await self._ynab.get_transaction(ynab_id)
+            except UpstreamError as e:
+                if e.status_code != 404:
+                    raise
+                ynab_tx = None
+            if ynab_tx is None or ynab_tx.deleted:
+                logger.info(
+                    "Transaction no longer in YNAB",
+                    up_transaction_id=up_id,
+                    ynab_transaction_id=ynab_id,
+                )
+                return Ignored(up_id, "not in YNAB")
         else:
             found = [
                 t
@@ -171,4 +183,14 @@ class Forwarder:
             )
             return Forwarded(up_id, created.ynab_id)
         logger.info("Already in YNAB", up_transaction_id=up_id)
+        if tx.attributes.status == "SETTLED":
+            try:
+                await self._settle(up_id, None)
+            except Exception as e:
+                # The transaction is in YNAB; a failed clear must not undo that.
+                logger.warning(
+                    "Could not mark existing YNAB copy cleared",
+                    up_transaction_id=up_id,
+                    error=str(e),
+                )
         return Forwarded(up_id, None)

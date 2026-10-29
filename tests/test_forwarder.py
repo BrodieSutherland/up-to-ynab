@@ -422,3 +422,79 @@ async def test_settle_failure_is_failed_and_keeps_forwarded_row(
     assert result.reason in ("ynab down", "up down", "Unexpected error: db gone")
     assert ledger.entries[SETTLED_ID].status == "forwarded"
     assert ledger.entries[SETTLED_ID].attempts == 1
+
+
+async def test_settled_ynab_copy_missing_is_ignored(settled_event, settle_up, ledger):
+    ynab = FakeYnabClient()
+    await forwarded_row(ledger, "ynab-gone")
+
+    result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
+
+    assert result == Ignored(SETTLED_ID, "not in YNAB")
+    assert ynab.updates == []
+
+
+async def test_settled_ynab_copy_deleted_is_ignored(settled_event, settle_up, ledger):
+    ynab = FakeYnabClient(
+        transactions=[ynab_transaction("ynab-x", "Payee", None, deleted=True)]
+    )
+    await forwarded_row(ledger)
+
+    result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
+
+    assert result == Ignored(SETTLED_ID, "not in YNAB")
+    assert ynab.updates == []
+
+
+async def test_settled_409_clears_the_existing_copy(settled_event, settle_up, ledger):
+    ynab = FakeYnabClient(
+        transactions=[
+            ynab_transaction(
+                "existing",
+                "Payee",
+                None,
+                amount=-497850,
+                cleared="uncleared",
+                import_id=SETTLED_ID,
+            )
+        ],
+        already_imported=True,
+    )
+
+    result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
+
+    assert result == Forwarded(SETTLED_ID, None)
+    assert ynab.updates == [("existing", "cleared", None)]
+
+
+async def test_settled_409_follow_up_failure_stays_forwarded(
+    settled_event, settle_up, ledger
+):
+    ynab = FakeYnabClient(
+        already_imported=True,
+        errors={"list_transactions": UpstreamError("boom", 500)},
+    )
+
+    result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
+
+    assert result == Forwarded(SETTLED_ID, None)
+    assert ledger.entries[SETTLED_ID].status == "forwarded"
+
+
+async def test_held_409_does_not_patch(settled_event, ledger):
+    settled = load_tx("purchase_with_round_up_1")
+    held = settled.model_copy(
+        update={"attributes": settled.attributes.model_copy(update={"status": "HELD"})}
+    )
+    up = FakeUpClient(transactions={SETTLED_ID: held})
+    ynab = FakeYnabClient(
+        transactions=[
+            ynab_transaction("existing", "Payee", None, import_id=SETTLED_ID)
+        ],
+        already_imported=True,
+    )
+
+    result = await settle_forwarder(up, ynab, ledger).handle(settled_event)
+
+    assert result == Forwarded(SETTLED_ID, None)
+    assert ynab.updates == []
