@@ -80,12 +80,12 @@ class TestAPIEndpoints:
         data = response.json()
         assert data["status"] == "healthy"
         assert data["service"] == "up-to-ynab"
-        assert data["version"] == "3.0.0"
+        assert data["version"] == "3.1.0"
 
     def test_openapi_version(self, client):
         response = client.get("/openapi.json")
 
-        assert response.json()["info"]["version"] == "3.0.0"
+        assert response.json()["info"]["version"] == "3.1.0"
 
     def test_webhook_forwarded(self, client, fake_ynab, sample_up_webhook_event_data):
         response = post_signed(client, sample_up_webhook_event_data)
