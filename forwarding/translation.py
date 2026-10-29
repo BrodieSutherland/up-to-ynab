@@ -42,19 +42,22 @@ def _is_round_up(tx: UpTransaction) -> bool:
     return tx.attributes.description == ROUND_UP and tx.amount_milliunits > 0
 
 
-def translate(tx: UpTransaction, index: BudgetIndex) -> YnabTransactionDetail | Skip:
+def translate(
+    tx: UpTransaction, index: BudgetIndex, transfers: bool = True
+) -> YnabTransactionDetail | Skip:
     """Turn an Up transaction into a YNAB transaction, or say to skip it.
 
     A Transfer whose two accounts are both in YNAB is forwarded once, from the
     Originating side (money left: amount <= 0) as a YNAB transfer; the Mirror
     side is skipped. A Round Up is forwarded the same way. If the other account
-    is not in YNAB, each half is an ordinary transaction.
+    is not in YNAB, each half is an ordinary transaction. With `transfers=False`
+    every transaction is ordinary (never a YNAB transfer, never a Mirror skip).
     """
     target = index.account(tx.account_id)
     if not isinstance(target, YnabAccountRef):
         return Skip("Up account not in YNAB", ACCOUNT_NOT_IN_YNAB)
     other_id = tx.transfer_account_id
-    other = index.account(other_id) if other_id else None
+    other = index.account(other_id) if other_id and transfers else None
     if isinstance(other, YnabAccountRef):
         if tx.amount_milliunits > 0 and not _is_round_up(tx):
             return Skip("Mirror side of a Transfer", MIRROR_SIDE)

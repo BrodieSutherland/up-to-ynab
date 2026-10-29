@@ -16,7 +16,13 @@ from forwarding.ledger import (
     Skipped,
     backfill_retryable,
 )
-from forwarding.translation import Skip, cleared_status, translate, ynab_date
+from forwarding.translation import (
+    ACCOUNT_NOT_IN_YNAB,
+    Skip,
+    cleared_status,
+    translate,
+    ynab_date,
+)
 from models.up_models import UpTransaction, UpWebhookEvent
 from models.ynab_models import YnabTransactionDetail
 
@@ -132,10 +138,14 @@ class Forwarder:
         called = False
         outcome: Outcome | Ignored
         try:
-            if not backfill_retryable(await self._ledger.lookup(tx.id)):
+            state = await self._ledger.lookup(tx.id)
+            if not backfill_retryable(state):
                 logger.info("Ignoring handled transaction", up_transaction_id=tx.id)
                 return BackfillStep(Ignored(tx.id, "already handled"), False)
-            prepared = await self._prepare(tx.id, tx)
+            # The other leg may already be in YNAB as an ordinary transaction,
+            # so a leg skipped for its account is retried as ordinary too.
+            transfers = not (state and state.reason_code == ACCOUNT_NOT_IN_YNAB)
+            prepared = await self._prepare(tx.id, tx, transfers)
             if isinstance(prepared, Skipped):
                 outcome = prepared
             else:
@@ -282,11 +292,11 @@ class Forwarder:
         return await self._create(up_id, tx, prepared)
 
     async def _prepare(
-        self, up_id: str, tx: UpTransaction
+        self, up_id: str, tx: UpTransaction, transfers: bool = True
     ) -> YnabTransactionDetail | Skipped:
         """Translate the transaction, or say it is skipped."""
         index = await self._holder.current_for(tx.account_id)
-        translated = translate(tx, index)
+        translated = translate(tx, index, transfers)
         if isinstance(translated, Skip):
             logger.info(
                 "Transaction skipped",

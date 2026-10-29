@@ -828,3 +828,44 @@ class TestBackfillOne:
 
         assert step == BackfillStep(Failed("t-1", "Budget Index unavailable"), False)
         assert ledger.entries["t-1"].status == "failed"
+
+    async def test_transfer_leg_skipped_for_its_account_retries_as_ordinary(
+        self, fake_up, fake_ynab, ledger
+    ):
+        both = BudgetIndex(
+            {
+                "accounts-4": YnabAccountRef("ynab-saver-3", "tp-saver-3"),
+                "accounts-1": YnabAccountRef("ynab-spending", "tp-spending"),
+            }
+        )
+        leg = load_tx("transfer_originating_1")
+        await ledger.record(
+            Skipped("transactions-87", "Up account not in YNAB", "account_not_in_ynab")
+        )
+
+        step = await self.make(fake_up, fake_ynab, ledger, both).backfill_one(leg)
+
+        assert step == BackfillStep(Forwarded("transactions-87", "ynab-1"), True)
+        created = fake_ynab.created[0]
+        assert created.account_id == "ynab-saver-3"
+        assert created.payee_id is None
+        assert created.payee_name == leg.payee
+        assert created.amount == -171000
+
+    async def test_new_transfer_leg_in_backfill_uses_the_transfer_rule(
+        self, fake_up, fake_ynab, ledger
+    ):
+        both = BudgetIndex(
+            {
+                "accounts-4": YnabAccountRef("ynab-saver-3", "tp-saver-3"),
+                "accounts-1": YnabAccountRef("ynab-spending", "tp-spending"),
+            }
+        )
+
+        step = await self.make(fake_up, fake_ynab, ledger, both).backfill_one(
+            load_tx("transfer_originating_1")
+        )
+
+        assert step == BackfillStep(Forwarded("transactions-87", "ynab-1"), True)
+        assert fake_ynab.created[0].payee_id == "tp-spending"
+        assert fake_ynab.created[0].payee_name is None

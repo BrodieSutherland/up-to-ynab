@@ -84,7 +84,7 @@ The Serena MCP server is configured for this repo (project `up-to-ynab`, Python 
 - Only `TRANSACTION_CREATED`, `TRANSACTION_SETTLED` and `TRANSACTION_DELETED` are acted on.
 - A `TRANSACTION_DELETED` for a transaction forwarded via the 409 path (no YNAB id) is ignored with a warning.
 - A `TRANSACTION_DELETED` that arrives before its `TRANSACTION_CREATED` is ignored; the CREATED then fails (Up 404) and is retried until Up gives up.
-- An Up account with no matching YNAB account is skipped (`reason_code` `account_not_in_ynab`); webhook redelivery won't retry it, but `POST /backfill` does. No automatic retry when an account becomes matched.
+- An Up account with no matching YNAB account is skipped (`reason_code` `account_not_in_ynab`); webhook redelivery won't retry it, but `POST /backfill` does, translating that leg as an ordinary transaction (`translate(..., transfers=False)`: never a YNAB transfer or Mirror skip, so the legs aren't linked). No automatic retry when an account becomes matched.
 
 ## Agent skills
 

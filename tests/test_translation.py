@@ -392,3 +392,12 @@ def test_category_match_uses_import_payee_name_of_renamed_payee():
     assert result.payee_name == "Payee 1"
     assert result.category_id == "cat-renamed"
     assert result.account_id == "y1"
+
+
+def test_transfers_off_makes_a_mirror_side_ordinary():
+    mirror = load("transfer_mirror_1")
+
+    assert translate(mirror, ALL) == MIRROR
+    result = translate(mirror, ALL, transfers=False)
+    assert result.payee_id is None
+    assert result.payee_name == mirror.payee
