@@ -6,7 +6,7 @@ from sqlalchemy.pool import StaticPool
 
 from database.connection import DatabaseManager
 from database.migrate import migration_config
-from database.models import Base
+from database.models import Base, LedgerEntry
 
 MEMORY = "sqlite+aiosqlite:///:memory:"
 
@@ -48,8 +48,12 @@ async def test_fresh_database_reaches_head_matching_models():
     manager = DatabaseManager(MEMORY)
     await manager.migrate()
 
-    assert await tables(manager) == {"alembic_version", "ledger_entries"}
-    assert await version(manager) == "0002"
+    assert await tables(manager) == {
+        "alembic_version",
+        "ledger_entries",
+        "webhook_secrets",
+    }
+    assert await version(manager) == "0003"
     async with manager.engine.connect() as conn:
         diff = await conn.run_sync(
             lambda c: compare_metadata(MigrationContext.configure(c), Base.metadata)
@@ -61,15 +65,21 @@ async def test_fresh_database_reaches_head_matching_models():
 async def test_3_0_database_is_stamped_and_keeps_rows():
     manager = DatabaseManager(MEMORY)
     async with manager.engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(
+            lambda c: Base.metadata.create_all(c, tables=[LedgerEntry.__table__])
+        )
         for ddl in LEGACY_DDL:
             await conn.execute(text(ddl))
         await conn.execute(text(INSERT_ROWS))
 
     await manager.migrate()
 
-    assert await tables(manager) == {"alembic_version", "ledger_entries"}
-    assert await version(manager) == "0002"
+    assert await tables(manager) == {
+        "alembic_version",
+        "ledger_entries",
+        "webhook_secrets",
+    }
+    assert await version(manager) == "0003"
     assert await rows(manager) == [
         ("up-1", "forwarded", "ynab-1"),
         ("up-2", "skipped", None),
@@ -85,8 +95,12 @@ async def test_2_x_database_without_ledger_gets_it_and_loses_legacy_tables():
 
     await manager.migrate()
 
-    assert await tables(manager) == {"alembic_version", "ledger_entries"}
-    assert await version(manager) == "0002"
+    assert await tables(manager) == {
+        "alembic_version",
+        "ledger_entries",
+        "webhook_secrets",
+    }
+    assert await version(manager) == "0003"
     await manager.close()
 
 
@@ -102,7 +116,7 @@ async def test_migrating_twice_is_a_no_op(tmp_path):
     await second.migrate()
     await second.migrate()
 
-    assert await version(second) == "0002"
+    assert await version(second) == "0003"
     assert await rows(second) == [
         ("up-1", "forwarded", "ynab-1"),
         ("up-2", "skipped", None),
@@ -150,4 +164,22 @@ async def test_file_database_uses_a_normal_pool_with_independent_sessions(tmp_pa
 async def test_memory_database_keeps_the_static_pool():
     manager = DatabaseManager(MEMORY)
     assert isinstance(manager.engine.sync_engine.pool, StaticPool)
+    await manager.close()
+
+
+async def test_downgrade_to_0002_drops_only_webhook_secrets():
+    manager = DatabaseManager(MEMORY)
+    await manager.migrate()
+    async with manager.engine.begin() as conn:
+        await conn.execute(text(INSERT_ROWS))
+        await conn.run_sync(lambda c: command.downgrade(migration_config(c), "0002"))
+
+    assert await tables(manager) == {"alembic_version", "ledger_entries"}
+    assert await version(manager) == "0002"
+    assert len(await rows(manager)) == 2
+
+    await manager.migrate()
+
+    assert await version(manager) == "0003"
+    assert "webhook_secrets" in await tables(manager)
     await manager.close()

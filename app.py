@@ -1,27 +1,31 @@
 import asyncio
 import contextlib
+import hmac
 from contextlib import AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, Protocol
 
 import httpx2 as httpx
 import structlog
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, ValidationError
 
 from clients.errors import UpstreamError
 from clients.up import HttpUpClient, UpClient
 from clients.ynab import HttpYnabClient, YnabClient
 from database.connection import DatabaseManager
+from database.webhook_secrets import SqlWebhookSecretStore, WebhookSecretStore
 from forwarding.budget_index import BudgetIndexHolder, rebuild_periodically
 from forwarding.forwarder import Forwarder, Settled
 from forwarding.ledger import Deleted, Failed, Forwarded, Skipped, SqlLedger
 from models.up_models import UpWebhookEvent
 from utils.config import Settings
 from utils.logging import setup_logging
-from webhooks import plan_webhook_changes
+from webhooks import SIGNATURE_HEADER, plan_webhook_changes, signature_valid
 
 logger = structlog.get_logger()
 
@@ -60,6 +64,7 @@ class Services:
     up: UpClient
     forwarder: Forwarder
     budget_index: IndexRebuilder
+    webhook_secrets: WebhookSecretStore
 
 
 def build_services(
@@ -68,7 +73,12 @@ def build_services(
     """Wire services from settings and clients; the only place they are built."""
     index = BudgetIndexHolder(up, ynab)
     forwarder = Forwarder(up, ynab, index, SqlLedger(database.get_session))
-    return Services(up=up, forwarder=forwarder, budget_index=index)
+    return Services(
+        up=up,
+        forwarder=forwarder,
+        budget_index=index,
+        webhook_secrets=SqlWebhookSecretStore(database.get_session),
+    )
 
 
 @asynccontextmanager
@@ -90,8 +100,25 @@ async def open_services(settings: Settings) -> AsyncIterator[Services]:
         yield build_services(settings, database, up, ynab)
 
 
-async def reconcile_webhooks(up: UpClient, webhook_url: str | None) -> None:
-    """Make exactly one Up webhook point at webhook_url; upstream errors are logged."""
+async def reconcile_webhooks(
+    up: UpClient, secrets: WebhookSecretStore, webhook_url: str | None
+) -> None:
+    """Make exactly one usable Up webhook point at webhook_url.
+
+    A hook is usable only if its signing secret is stored. Upstream errors are
+    logged. Secrets are never logged.
+    """
+    await _reconcile(up, secrets, webhook_url)
+    if not await secrets.all():
+        logger.warning(
+            "No webhook secret stored; /webhook rejects every event",
+            hint="set WEBHOOK_URL",
+        )
+
+
+async def _reconcile(
+    up: UpClient, secrets: WebhookSecretStore, webhook_url: str | None
+) -> None:
     if not webhook_url:
         logger.info("No webhook URL configured - webhook setup skipped")
         return
@@ -100,9 +127,14 @@ async def reconcile_webhooks(up: UpClient, webhook_url: str | None) -> None:
     except UpstreamError as e:
         logger.error("Failed to list webhooks", status_code=e.status_code, error=str(e))
         return
-    plan = plan_webhook_changes(registered, webhook_url)
+    plan = plan_webhook_changes(
+        registered, webhook_url, known_secret_ids=set(await secrets.all())
+    )
     for warning in plan.warnings:
         logger.warning("Webhook left in place", detail=warning)
+    for webhook_id in plan.forget:
+        await secrets.delete(webhook_id)
+        logger.info("Stored secret forgotten", webhook_id=webhook_id)
     for webhook_id in plan.delete:
         try:
             await up.delete_webhook(webhook_id)
@@ -114,10 +146,11 @@ async def reconcile_webhooks(up: UpClient, webhook_url: str | None) -> None:
                 error=str(e),
             )
         else:
+            await secrets.delete(webhook_id)
             logger.info("Webhook deleted", webhook_id=webhook_id)
     if plan.create:
         try:
-            webhook_id = await up.create_webhook(webhook_url)
+            created = await up.create_webhook(webhook_url)
         except UpstreamError as e:
             logger.error(
                 "Failed to create webhook",
@@ -126,7 +159,29 @@ async def reconcile_webhooks(up: UpClient, webhook_url: str | None) -> None:
                 error=str(e),
             )
         else:
-            logger.info("Webhook created", webhook_id=webhook_id, url=webhook_url)
+            await secrets.save(created.id, created.secret_key)
+            logger.info("Webhook created", webhook_id=created.id, url=webhook_url)
+
+
+_bearer = HTTPBearer(auto_error=False)
+
+
+async def require_admin(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> None:
+    """Admin endpoints need the ADMIN_TOKEN as a Bearer token, if one is set."""
+    token = request.app.state.settings.admin_token
+    if token is None:
+        return
+    if credentials is None or not hmac.compare_digest(
+        credentials.credentials.encode(), token.encode()
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid admin token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 async def _run_startup_tasks(settings: Settings, services: Services) -> None:
@@ -138,7 +193,11 @@ async def _run_startup_tasks(settings: Settings, services: Services) -> None:
             reason="ignored since 3.0.0; accounts are matched by name",
         )
     try:
-        await reconcile_webhooks(services.up, settings.webhook_url)
+        if settings.admin_token is None:
+            logger.warning("ADMIN_TOKEN not set; admin endpoints are open")
+        await reconcile_webhooks(
+            services.up, services.webhook_secrets, settings.webhook_url
+        )
 
         try:
             await services.budget_index.rebuild()
@@ -284,13 +343,44 @@ def create_app(
         it is still uncleared; a cleared or reconciled copy is flagged red for
         review instead. Transactions never forwarded are ignored.
 
+        The request must carry Up's `X-Up-Authenticity-Signature` header: the
+        hex SHA-256 HMAC of the raw body under the secret of a webhook this app
+        created. Answers 401 when it is missing or does not match.
+
         Answers 503 when handling failed so Up redelivers the event;
         otherwise 200 with status forwarded, skipped, settled, deleted, flagged
         or ignored.
         """,
+        responses={401: {"description": "Missing or invalid webhook signature"}},
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {"schema": UpWebhookEvent.model_json_schema()}
+                },
+            }
+        },
     )
-    async def handle_webhook(webhook_event: UpWebhookEvent) -> JSONResponse:
+    async def handle_webhook(
+        request: Request,
+        signature: str | None = Header(None, alias=SIGNATURE_HEADER),
+    ) -> JSONResponse:
         """Handle incoming webhook events from Up Bank."""
+        body = await request.body()
+        secrets = await app.state.services.webhook_secrets.all()
+        if not signature_valid(body, signature, secrets.values()):
+            logger.warning(
+                "Webhook signature rejected",
+                reason="missing" if not signature else "invalid",
+            )
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "Invalid webhook signature"},
+            )
+        try:
+            webhook_event = UpWebhookEvent.model_validate_json(body)
+        except ValidationError as exc:
+            raise RequestValidationError(exc.errors(include_url=False))
         logger.info("Received event", event_type=webhook_event.data.event_type)
         outcome = await app.state.services.forwarder.handle(webhook_event)
         if isinstance(outcome, Forwarded):
@@ -321,14 +411,16 @@ def create_app(
         )
 
     # Manual refresh endpoint
-    @app.get("/refresh", tags=["admin"])
+    @app.get("/refresh", tags=["admin"], dependencies=[Depends(require_admin)])
     async def refresh_data() -> Dict[str, str]:
         """Rebuild the Budget Index."""
         try:
             logger.info("Manual refresh requested")
 
             await reconcile_webhooks(
-                app.state.services.up, app.state.settings.webhook_url
+                app.state.services.up,
+                app.state.services.webhook_secrets,
+                app.state.settings.webhook_url,
             )
             await app.state.services.budget_index.rebuild()
             return {"status": "success", "message": "Data refreshed successfully"}

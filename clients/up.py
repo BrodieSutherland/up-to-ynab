@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import httpx2 as httpx
@@ -14,6 +15,14 @@ from models.up_models import (
 WEBHOOK_DESCRIPTION = "UP to YNAB transaction sync webhook"
 
 
+@dataclass(frozen=True)
+class CreatedWebhook:
+    """A webhook Up just created, with the secret it signs deliveries with."""
+
+    id: str
+    secret_key: str = field(repr=False)
+
+
 class UpClient(Protocol):
     """What the app needs from Up. Every method raises UpstreamError on failure."""
 
@@ -23,8 +32,8 @@ class UpClient(Protocol):
 
     async def list_webhooks(self) -> list[UpWebhook]: ...
 
-    async def create_webhook(self, url: str) -> str:
-        """Create a webhook and return its id."""
+    async def create_webhook(self, url: str) -> CreatedWebhook:
+        """Create a webhook and return its id and signing secret."""
         ...
 
     async def delete_webhook(self, webhook_id: str) -> None: ...
@@ -105,13 +114,16 @@ class HttpUpClient:
         except (ValidationError, KeyError, TypeError) as exc:
             raise UpstreamError("GET /webhooks returned unexpected shape") from exc
 
-    async def create_webhook(self, url: str) -> str:
+    async def create_webhook(self, url: str) -> CreatedWebhook:
         payload = {
             "data": {"attributes": {"url": url, "description": WEBHOOK_DESCRIPTION}}
         }
         body = await self._request("POST", "/webhooks", json=payload)
         try:
-            return str(body["data"]["id"])
+            data = body["data"]
+            return CreatedWebhook(
+                id=str(data["id"]), secret_key=str(data["attributes"]["secretKey"])
+            )
         except (KeyError, TypeError) as exc:
             raise UpstreamError("POST /webhooks returned unexpected shape") from exc
 

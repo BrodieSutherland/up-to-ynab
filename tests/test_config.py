@@ -238,3 +238,27 @@ class TestSettings:
 
         assert not any(key.startswith("legacy_") for key in dumped)
         assert "old" not in repr(settings)
+
+    def test_admin_token_is_hidden_from_repr(self):
+        settings = Settings(
+            _env_file=None,
+            up_api_token="a",
+            ynab_api_token="b",
+            ynab_budget_id="c",
+            admin_token="tok-secret",
+        )
+
+        assert settings.admin_token == "tok-secret"
+        assert "tok-secret" not in repr(settings)
+
+    @pytest.mark.parametrize("value", ["", "   "])
+    def test_blank_admin_token_is_unset(self, value):
+        settings = Settings(
+            _env_file=None,
+            up_api_token="a",
+            ynab_api_token="b",
+            ynab_budget_id="c",
+            admin_token=value,
+        )
+
+        assert settings.admin_token is None

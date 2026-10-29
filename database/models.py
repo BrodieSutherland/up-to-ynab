@@ -39,3 +39,16 @@ class LedgerEntry(Base):
             f"<LedgerEntry(up_id='{self.up_transaction_id}', "
             f"status='{self.status}', attempts={self.attempts})>"
         )
+
+
+class WebhookSecret(Base):
+    """The signing secret Up returned when this app created a webhook."""
+
+    __tablename__ = "webhook_secrets"
+
+    webhook_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    secret_key: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+
+    def __repr__(self) -> str:
+        return f"<WebhookSecret(webhook_id='{self.webhook_id}')>"

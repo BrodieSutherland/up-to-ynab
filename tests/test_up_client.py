@@ -6,7 +6,7 @@ import pytest
 import structlog
 
 from clients.errors import UpstreamError
-from clients.up import HttpUpClient
+from clients.up import CreatedWebhook, HttpUpClient
 
 FIXTURES = Path(__file__).parent / "fixtures" / "up"
 BASE = "https://api.up.test/api/v1"
@@ -155,12 +155,21 @@ class TestWebhooks:
             ("w2", "https://b.test/hook", None),
         ]
 
-    async def test_create_webhook_posts_and_returns_id(self):
+    async def test_create_webhook_posts_and_returns_id_and_secret(self):
         client, requests = make_client(
-            respond(201, {"data": {"type": "webhooks", "id": "w9"}})
+            respond(
+                201,
+                {
+                    "data": {
+                        "type": "webhooks",
+                        "id": "w9",
+                        "attributes": {"secretKey": "sk-9"},
+                    }
+                },
+            )
         )
 
-        webhook_id = await client.create_webhook("https://a.test/hook")
+        created = await client.create_webhook("https://a.test/hook")
 
         [request] = requests
         assert request.method == "POST"
@@ -173,7 +182,16 @@ class TestWebhooks:
                 }
             }
         }
-        assert webhook_id == "w9"
+        assert created == CreatedWebhook("w9", "sk-9")
+        assert "sk-9" not in repr(created)
+
+    async def test_create_webhook_without_secret_raises(self):
+        client, _ = make_client(
+            respond(201, {"data": {"type": "webhooks", "id": "w9"}})
+        )
+
+        with pytest.raises(UpstreamError, match="unexpected shape"):
+            await client.create_webhook("https://a.test/hook")
 
     async def test_create_webhook_failure_raises(self):
         client, _ = make_client(respond(401))

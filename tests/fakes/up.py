@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from clients.errors import UpstreamError
-from clients.up import WEBHOOK_DESCRIPTION
+from clients.up import WEBHOOK_DESCRIPTION, CreatedWebhook
 from models.up_models import UpAccount, UpTransaction, UpWebhook
 
 
@@ -60,14 +60,14 @@ class FakeUpClient:
         self._maybe_raise("list_webhooks")
         return list(self.webhooks)
 
-    async def create_webhook(self, url: str) -> str:
+    async def create_webhook(self, url: str) -> CreatedWebhook:
         self._maybe_raise("create_webhook")
         self.created_webhooks.append(url)
         webhook_id = f"webhook-{len(self.created_webhooks)}"
         self.webhooks.append(
             UpWebhook(id=webhook_id, url=url, description=WEBHOOK_DESCRIPTION)
         )
-        return webhook_id
+        return CreatedWebhook(webhook_id, f"{webhook_id}-secret")
 
     async def delete_webhook(self, webhook_id: str) -> None:
         self._maybe_raise("delete_webhook")

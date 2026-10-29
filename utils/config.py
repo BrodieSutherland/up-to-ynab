@@ -1,6 +1,6 @@
 from typing import Annotated, Optional
 
-from pydantic import Field, StringConstraints
+from pydantic import Field, StringConstraints, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 RequiredStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
@@ -39,6 +39,13 @@ class Settings(BaseSettings):
         description="YNAB API base URL",
     )
 
+    # Admin endpoints
+    admin_token: Optional[str] = Field(
+        default=None,
+        repr=False,
+        description="Bearer token required by admin endpoints; open if unset",
+    )
+
     # Database configuration
     database_url: str = Field(
         default="sqlite+aiosqlite:///./up_to_ynab.db",
@@ -55,6 +62,13 @@ class Settings(BaseSettings):
         exclude=True,
         repr=False,
     )
+
+    @field_validator("admin_token", mode="before")
+    @classmethod
+    def _blank_admin_token_is_unset(cls, value):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     def ignored_env_vars(self) -> list[str]:
         """Names of removed settings that are still set."""
