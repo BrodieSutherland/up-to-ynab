@@ -2,6 +2,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import inspect, text
+from sqlalchemy.pool import StaticPool
 
 from database.connection import DatabaseManager
 from database.migrate import migration_config
@@ -120,4 +121,33 @@ async def test_downgrade_to_base_removes_the_schema():
     async with manager.engine.connect() as conn:
         result = await conn.execute(text("SELECT count(*) FROM alembic_version"))
         assert result.scalar_one() == 0
+    await manager.close()
+
+
+async def test_file_database_uses_a_normal_pool_with_independent_sessions(tmp_path):
+    manager = DatabaseManager(f"sqlite+aiosqlite:///{tmp_path / 'pool.db'}")
+    await manager.migrate()
+    assert not isinstance(manager.engine.sync_engine.pool, StaticPool)
+
+    insert = text(
+        "INSERT INTO ledger_entries "
+        "(up_transaction_id, status, attempts, updated_at) "
+        "VALUES (:id, 'forwarded', 1, '2024-01-01 00:00:00')"
+    )
+    async with manager.get_session() as committed:
+        await committed.execute(insert, {"id": "kept"})
+    try:
+        async with manager.get_session() as doomed:
+            await doomed.execute(insert, {"id": "discarded"})
+            raise RuntimeError("roll back this session only")
+    except RuntimeError:
+        pass
+
+    assert [r[0] for r in await rows(manager)] == ["kept"]
+    await manager.close()
+
+
+async def test_memory_database_keeps_the_static_pool():
+    manager = DatabaseManager(MEMORY)
+    assert isinstance(manager.engine.sync_engine.pool, StaticPool)
     await manager.close()

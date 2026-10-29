@@ -13,18 +13,27 @@ from .migrate import upgrade_to_head
 SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
 
+def _is_memory_sqlite(database_url: str) -> bool:
+    """True for SQLite URLs with no file behind them (`:memory:` or empty path)."""
+    if "sqlite" not in database_url:
+        return False
+    path = database_url.split("///", 1)[1] if "///" in database_url else ""
+    path = path.split("?", 1)[0]
+    return path in ("", ":memory:") or "mode=memory" in database_url
+
+
 class DatabaseManager:
     """Database connection and session management."""
 
     def __init__(self, database_url: str, echo: bool = False):
         self.database_url = database_url
+        # One shared connection is only needed so an in-memory SQLite database
+        # survives between sessions; file databases use the default pool.
+        memory = _is_memory_sqlite(database_url)
         self.engine = create_async_engine(
             database_url,
-            # SQLite specific settings
-            poolclass=(StaticPool if "sqlite" in database_url else None),
-            connect_args=(
-                {"check_same_thread": False} if "sqlite" in database_url else {}
-            ),
+            poolclass=StaticPool if memory else None,
+            connect_args={"check_same_thread": False} if memory else {},
             echo=echo,
         )
         self.async_session = async_sessionmaker(
