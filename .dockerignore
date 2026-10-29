@@ -8,6 +8,7 @@
 !clients/
 !database/
 !forwarding/
+!migrations/
 !models/
 !utils/
 !requirements.txt

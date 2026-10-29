@@ -97,7 +97,7 @@ The container runs as uid 1000, so the host `data` folder must be writable by th
 3. `UP_API_TOKEN`, `YNAB_API_TOKEN` and `YNAB_BUDGET_ID` must be set. Startup fails naming the missing or empty field.
 4. If you override the container command, use `uvicorn --factory app:create_app`.
 5. On startup and on `/refresh`, stale or duplicate webhooks this app created on the same host are deleted. Webhooks this app created on other hosts are only logged, and webhooks it didn't create are never touched.
-6. Optional: the old `payee_category_mappings` and `processed_transactions` tables are left in the database, unread. You can remove them with the `sqlite3` CLI. The database is `up_to_ynab.db` in the working directory by default, or `./data/up_to_ynab.db` with this repo's `docker-compose.yml`.
+6. The old `payee_category_mappings` and `processed_transactions` tables are left in place by 3.0. From 3.1 they are dropped automatically on startup.
 
 Coming from 1.x: set `WEBHOOK_URL=<your-host>/webhook`. The old `/` webhook is removed on first start.
 
@@ -209,7 +209,8 @@ up-to-ynab/
 ├── webhooks.py       # Pure webhook reconciliation planner
 ├── forwarding/       # Forwarder, translation, Budget Index, Ledger
 ├── clients/          # Up and YNAB client Protocols and HTTP adapters
-├── database/         # SQLAlchemy models and connection
+├── database/         # SQLAlchemy models, connection and migration runner
+├── migrations/       # Alembic revisions
 ├── models/           # Pydantic models for Up and YNAB payloads
 ├── utils/            # config.py (Settings), logging.py
 ├── tests/            # Test suite

@@ -7,3 +7,4 @@ aiosqlite==0.22.1
 httpx2==2.13.1
 python-dotenv==1.2.4
 structlog==26.1.0
+alembic==1.20.1

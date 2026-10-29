@@ -75,7 +75,7 @@ async def open_services(settings: Settings) -> AsyncIterator[Services]:
     async with AsyncExitStack() as stack:
         database = DatabaseManager(settings.database_url, echo=settings.debug_mode)
         stack.push_async_callback(database.close)
-        await database.create_tables()
+        await database.migrate()
         up_http = await stack.enter_async_context(httpx.AsyncClient())
         ynab_http = await stack.enter_async_context(httpx.AsyncClient())
         up = HttpUpClient(up_http, settings.up_api_token, settings.up_base_url)

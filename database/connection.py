@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from .models import Base
+from .migrate import upgrade_to_head
 
 SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
 
@@ -33,10 +33,10 @@ class DatabaseManager:
             expire_on_commit=False,
         )
 
-    async def create_tables(self) -> None:
-        """Create all database tables."""
+    async def migrate(self) -> None:
+        """Bring the schema up to the latest revision."""
         async with self.engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(upgrade_to_head)
 
     @asynccontextmanager
     async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
