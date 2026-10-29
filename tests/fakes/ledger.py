@@ -1,6 +1,13 @@
 from dataclasses import dataclass
 
-from forwarding.ledger import Deleted, Forwarded, LedgerState, Outcome, Skipped
+from forwarding.ledger import (
+    Deleted,
+    Forwarded,
+    LedgerState,
+    Outcome,
+    Skipped,
+    overwritable,
+)
 
 
 @dataclass
@@ -9,6 +16,7 @@ class Entry:
     ynab_transaction_id: str | None
     reason: str | None
     attempts: int
+    reason_code: str | None = None
 
 
 class InMemoryLedger:
@@ -32,7 +40,7 @@ class InMemoryLedger:
         entry = self.entries.get(up_transaction_id)
         if entry is None:
             return None
-        return LedgerState(entry.status, entry.ynab_transaction_id)
+        return LedgerState(entry.status, entry.ynab_transaction_id, entry.reason_code)
 
     async def attempts(self, up_transaction_id: str) -> int:
         entry = self.entries.get(up_transaction_id)
@@ -42,19 +50,28 @@ class InMemoryLedger:
         self._maybe_raise("record")
         up_id = outcome.up_transaction_id
         if isinstance(outcome, Forwarded):
-            fields = ("forwarded", outcome.ynab_transaction_id, None)
+            fields = ("forwarded", outcome.ynab_transaction_id, None, None)
         elif isinstance(outcome, Skipped):
-            fields = ("skipped", None, outcome.reason)
+            fields = ("skipped", None, outcome.reason, outcome.reason_code)
         elif isinstance(outcome, Deleted):
-            fields = ("deleted", outcome.ynab_transaction_id, outcome.reason)
+            fields = ("deleted", outcome.ynab_transaction_id, outcome.reason, None)
         else:
-            fields = ("failed", None, outcome.reason)
+            fields = ("failed", None, outcome.reason, None)
         entry = self.entries.get(up_id)
         if isinstance(outcome, Deleted):
             if entry is not None and entry.status == "forwarded":
                 entry.status, entry.reason = fields[0], fields[2]
         elif entry is None:
-            self.entries[up_id] = Entry(*fields, attempts=1)
-        elif entry.status == "failed":
-            entry.status, entry.ynab_transaction_id, entry.reason = fields
+            self.entries[up_id] = Entry(
+                fields[0], fields[1], fields[2], attempts=1, reason_code=fields[3]
+            )
+        elif overwritable(entry.status, entry.reason_code):
+            if entry.status == "skipped" and fields[0] == "failed":
+                return
+            (
+                entry.status,
+                entry.ynab_transaction_id,
+                entry.reason,
+                entry.reason_code,
+            ) = fields
             entry.attempts += 1

@@ -5,6 +5,8 @@ from models.up_models import UpTransaction
 from models.ynab_models import YnabTransactionDetail
 
 ROUND_UP = "Round Up"
+ACCOUNT_NOT_IN_YNAB = "account_not_in_ynab"
+MIRROR_SIDE = "mirror_side"
 
 
 @dataclass(frozen=True)
@@ -12,6 +14,7 @@ class Skip:
     """The transaction should not be forwarded."""
 
     reason: str
+    code: str
 
 
 def cleared_status(up_transaction: UpTransaction) -> str:
@@ -49,12 +52,12 @@ def translate(tx: UpTransaction, index: BudgetIndex) -> YnabTransactionDetail | 
     """
     target = index.account(tx.account_id)
     if not isinstance(target, YnabAccountRef):
-        return Skip("Up account not in YNAB")
+        return Skip("Up account not in YNAB", ACCOUNT_NOT_IN_YNAB)
     other_id = tx.transfer_account_id
     other = index.account(other_id) if other_id else None
     if isinstance(other, YnabAccountRef):
         if tx.amount_milliunits > 0 and not _is_round_up(tx):
-            return Skip("Mirror side of a Transfer")
+            return Skip("Mirror side of a Transfer", MIRROR_SIDE)
         return YnabTransactionDetail(
             account_id=target.id,
             payee_id=other.transfer_payee_id,

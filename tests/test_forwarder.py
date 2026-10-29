@@ -10,12 +10,12 @@ from forwarding.budget_index import (
     NotInYnab,
     YnabAccountRef,
 )
-from forwarding.forwarder import Forwarder, Ignored, Settled
+from forwarding.forwarder import BackfillStep, Forwarder, Ignored, Settled
 from forwarding.ledger import Deleted, Failed, Forwarded, Skipped
 from models.up_models import UpTransaction, UpWebhookEvent
 from tests.fakes.budget_index import FakeIndexHolder
 from tests.fakes.ledger import InMemoryLedger
-from tests.fakes.up import FakeUpClient
+from tests.fakes.up import FakeUpClient, up_transaction
 from tests.fakes.ynab import FakeYnabClient, ynab_transaction
 
 INDEX = BudgetIndex({"test-account-id": YnabAccountRef("acct-1", "tp-1")}, {})
@@ -85,7 +85,9 @@ async def test_mirror_side_is_skipped(
 
     result = await forwarder.handle(UpWebhookEvent(**sample_up_webhook_event_data))
 
-    assert result == Skipped("test-transaction-id", "Mirror side of a Transfer")
+    assert result == Skipped(
+        "test-transaction-id", "Mirror side of a Transfer", "mirror_side"
+    )
     assert fake_ynab.created == []
     assert ledger.entries["test-transaction-id"].status == "skipped"
 
@@ -188,7 +190,9 @@ async def test_account_not_in_ynab_is_skipped(fake_up, fake_ynab, event, ledger)
 
     result = await forwarder.handle(event)
 
-    assert result == Skipped("test-transaction-id", "Up account not in YNAB")
+    assert result == Skipped(
+        "test-transaction-id", "Up account not in YNAB", "account_not_in_ynab"
+    )
     assert fake_ynab.created == []
     assert ledger.entries["test-transaction-id"].status == "skipped"
 
@@ -344,7 +348,7 @@ async def test_settled_after_failed_creates_cleared(settled_event, settle_up, le
 
 async def test_settled_skipped_transaction_is_ignored(settled_event, settle_up, ledger):
     ynab = FakeYnabClient()
-    await ledger.record(Skipped(SETTLED_ID, "Mirror side of a Transfer"))
+    await ledger.record(Skipped(SETTLED_ID, "Mirror side of a Transfer", "mirror_side"))
 
     result = await settle_forwarder(settle_up, ynab, ledger).handle(settled_event)
 
@@ -383,7 +387,9 @@ async def test_settled_mirror_side_without_entry_is_skipped(ledger):
 
     result = await settle_forwarder(up, ynab, ledger, index).handle(event)
 
-    assert result == Skipped("transactions-4", "Mirror side of a Transfer")
+    assert result == Skipped(
+        "transactions-4", "Mirror side of a Transfer", "mirror_side"
+    )
     assert ynab.created == []
     assert ledger.entries["transactions-4"].status == "skipped"
 
@@ -612,7 +618,7 @@ class TestDeleted:
     async def test_skipped_and_failed_rows_are_left(self, deleted_event, ledger):
         ynab = ynab_with("uncleared")
         forwarder = deleted_forwarder(ynab, ledger)
-        await ledger.record(Skipped(DELETED_ID, "no account"))
+        await ledger.record(Skipped(DELETED_ID, "no account", "no_account"))
 
         skipped = await forwarder.handle(deleted_event)
 
@@ -735,3 +741,90 @@ class TestDeleted:
         )
 
         assert result == Ignored(up_id, "not forwarded to YNAB")
+
+
+class TestBackfillOne:
+    def make(self, fake_up, fake_ynab, ledger, index=INDEX):
+        return Forwarder(fake_up, fake_ynab, FakeIndexHolder(index), ledger)
+
+    async def test_new_transaction_is_forwarded_without_refetching(
+        self, fake_up, fake_ynab, ledger
+    ):
+        fake_up.errors["get_transaction"] = UpstreamError("must not fetch", 500)
+        forwarder = self.make(fake_up, fake_ynab, ledger)
+
+        step = await forwarder.backfill_one(up_transaction("t-1"))
+
+        assert step == BackfillStep(Forwarded("t-1", "ynab-1"), True)
+        assert ledger.entries["t-1"].status == "forwarded"
+        assert len(fake_ynab.created) == 1
+
+    async def test_handled_transaction_is_ignored(self, fake_up, fake_ynab, ledger):
+        await ledger.record(Forwarded("t-1", "ynab-9"))
+        forwarder = self.make(fake_up, fake_ynab, ledger)
+
+        step = await forwarder.backfill_one(up_transaction("t-1"))
+
+        assert step == BackfillStep(Ignored("t-1", "already handled"), False)
+        assert fake_ynab.created == []
+
+    async def test_unmatched_account_skip_is_retried_once_matched(
+        self, fake_up, fake_ynab, ledger
+    ):
+        await ledger.record(
+            Skipped("t-1", "Up account not in YNAB", "account_not_in_ynab")
+        )
+        forwarder = self.make(fake_up, fake_ynab, ledger)
+
+        step = await forwarder.backfill_one(up_transaction("t-1"))
+
+        assert step == BackfillStep(Forwarded("t-1", "ynab-1"), True)
+        assert ledger.entries["t-1"].status == "forwarded"
+        assert ledger.entries["t-1"].reason_code is None
+        assert ledger.entries["t-1"].attempts == 2
+
+    async def test_still_unmatched_account_is_skipped_without_create(
+        self, fake_up, fake_ynab, ledger
+    ):
+        await ledger.record(
+            Skipped("t-1", "Up account not in YNAB", "account_not_in_ynab")
+        )
+        forwarder = self.make(fake_up, fake_ynab, ledger, BudgetIndex({}))
+
+        step = await forwarder.backfill_one(up_transaction("t-1"))
+
+        assert step == BackfillStep(
+            Skipped("t-1", "Up account not in YNAB", "account_not_in_ynab"), False
+        )
+
+    async def test_already_in_ynab_is_forwarded(self, fake_up, fake_ynab, ledger):
+        fake_ynab.already_imported = True
+        forwarder = self.make(fake_up, fake_ynab, ledger)
+
+        step = await forwarder.backfill_one(up_transaction("t-1"))
+
+        assert step == BackfillStep(Forwarded("t-1", None), True)
+
+    async def test_create_failure_is_failed_and_keeps_skip(
+        self, fake_up, fake_ynab, ledger
+    ):
+        await ledger.record(
+            Skipped("t-1", "Up account not in YNAB", "account_not_in_ynab")
+        )
+        fake_ynab.errors["create_transaction"] = UpstreamError("ynab down", 500)
+        forwarder = self.make(fake_up, fake_ynab, ledger)
+
+        step = await forwarder.backfill_one(up_transaction("t-1"))
+
+        assert step == BackfillStep(Failed("t-1", "ynab down"), True)
+        assert ledger.entries["t-1"].status == "skipped"
+
+    async def test_index_unavailable_is_failed_without_create(
+        self, fake_up, fake_ynab, ledger
+    ):
+        forwarder = Forwarder(fake_up, fake_ynab, FakeIndexHolder(None), ledger)
+
+        step = await forwarder.backfill_one(up_transaction("t-1"))
+
+        assert step == BackfillStep(Failed("t-1", "Budget Index unavailable"), False)
+        assert ledger.entries["t-1"].status == "failed"

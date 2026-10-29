@@ -2,12 +2,13 @@ import asyncio
 import contextlib
 import hmac
 from contextlib import AsyncExitStack, asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, AsyncIterator, Dict, Protocol
 
 import httpx2 as httpx
 import structlog
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -19,6 +20,7 @@ from clients.up import HttpUpClient, UpClient
 from clients.ynab import HttpYnabClient, YnabClient
 from database.connection import DatabaseManager
 from database.webhook_secrets import SqlWebhookSecretStore, WebhookSecretStore
+from forwarding.backfill import backfill
 from forwarding.budget_index import BudgetIndexHolder, rebuild_periodically
 from forwarding.forwarder import Forwarder, Settled
 from forwarding.ledger import Deleted, Failed, Forwarded, Skipped, SqlLedger
@@ -51,6 +53,35 @@ class WebhookResponse(BaseModel):
             ]
         }
     }
+
+
+class BackfillResponse(BaseModel):
+    """Counts from a backfill run."""
+
+    forwarded: int
+    skipped: int
+    failed: int
+    already_handled: int
+    more_remaining: bool
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [
+                {
+                    "forwarded": 12,
+                    "skipped": 3,
+                    "failed": 0,
+                    "already_handled": 40,
+                    "more_remaining": False,
+                }
+            ]
+        }
+    }
+
+
+# Australian Eastern Standard Time; during daylight saving the cut-off is an
+# hour early, which only re-checks handled transactions.
+AEST = timezone(timedelta(hours=10))
 
 
 class IndexRebuilder(Protocol):
@@ -441,6 +472,47 @@ def create_app(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to refresh data",
             )
+
+    @app.post(
+        "/backfill",
+        tags=["admin"],
+        response_model=BackfillResponse,
+        dependencies=[Depends(require_admin)],
+        summary="Forward Up transactions missed by the webhook",
+        responses={502: {"description": "Could not list Up transactions"}},
+    )
+    async def run_backfill(
+        since: date = Query(
+            ...,
+            description=(
+                "YYYY-MM-DD; transactions created on or after this day "
+                "(Australian time)"
+            ),
+        ),
+    ) -> Dict[str, Any]:
+        """Forward Up transactions created since a date that YNAB does not have.
+
+        Transactions already forwarded, deleted or skipped are left alone,
+        except those skipped because their Up account was not in YNAB, which
+        are retried (run /refresh after adding the account). Stops after
+        150 YNAB creates; run it again while `more_remaining` is true.
+        """
+        start = datetime.combine(since, time(0), tzinfo=AEST)
+        try:
+            report = await backfill(
+                app.state.services.up, app.state.services.forwarder, start
+            )
+        except UpstreamError as exc:
+            logger.error(
+                "Failed to list Up transactions",
+                status_code=exc.status_code,
+                error=str(exc),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Could not list Up transactions",
+            )
+        return asdict(report)
 
     return app
 

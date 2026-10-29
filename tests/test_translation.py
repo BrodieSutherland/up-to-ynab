@@ -25,8 +25,8 @@ SP_ONLY = BudgetIndex({"accounts-1": SP, "accounts-4": NotInYnab()})
 SP_ONLY_UNKNOWN = BudgetIndex({"accounts-1": SP})
 INDEX = BudgetIndex({"accounts-1": SP})
 MATCHED = BudgetIndex({"accounts-1": SP}, {"Payee 1": "cat-1"})
-MIRROR = Skip("Mirror side of a Transfer")
-NOT_IN_YNAB = Skip("Up account not in YNAB")
+MIRROR = Skip("Mirror side of a Transfer", "mirror_side")
+NOT_IN_YNAB = Skip("Up account not in YNAB", "account_not_in_ynab")
 
 
 def load(name):
@@ -361,12 +361,12 @@ def test_account_not_in_ynab_is_skipped():
         load("purchase_plain_1"), BudgetIndex({"accounts-1": NotInYnab()})
     )
 
-    assert result == Skip("Up account not in YNAB")
+    assert result == Skip("Up account not in YNAB", "account_not_in_ynab")
 
 
 def test_unknown_account_is_skipped():
     assert translate(load("purchase_plain_1"), BudgetIndex({})) == Skip(
-        "Up account not in YNAB"
+        "Up account not in YNAB", "account_not_in_ynab"
     )
 
 

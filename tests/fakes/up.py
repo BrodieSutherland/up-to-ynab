@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from pathlib import Path
 
 from clients.errors import UpstreamError
@@ -39,6 +40,7 @@ class FakeUpClient:
         self.deleted_webhooks: list[str] = []
         self.list_accounts_calls = 0
         self.list_webhooks_calls = 0
+        self.list_transactions_calls: list[datetime] = []
 
     def _maybe_raise(self, method: str) -> None:
         if method in self.errors:
@@ -49,6 +51,15 @@ class FakeUpClient:
         if transaction_id not in self.transactions:
             raise UpstreamError("not found", 404)
         return self.transactions[transaction_id]
+
+    async def list_transactions(self, since: datetime) -> list[UpTransaction]:
+        self.list_transactions_calls.append(since)
+        self._maybe_raise("list_transactions")
+        found = [
+            t for t in self.transactions.values() if t.attributes.created_at >= since
+        ]
+        # Newest first, as Up lists them, so callers must sort for themselves.
+        return sorted(found, key=lambda t: t.attributes.created_at, reverse=True)
 
     async def list_accounts(self) -> list[UpAccount]:
         self.list_accounts_calls += 1
@@ -73,3 +84,41 @@ class FakeUpClient:
         self._maybe_raise("delete_webhook")
         self.deleted_webhooks.append(webhook_id)
         self.webhooks = [w for w in self.webhooks if w.id != webhook_id]
+
+
+def up_transaction(
+    id: str,
+    created_at: str = "2026-10-05T01:00:00+00:00",
+    account_id: str = "test-account-id",
+    transfer_account_id: str | None = None,
+    amount_base_units: int = -1250,
+) -> UpTransaction:
+    """A minimal settled Up transaction for list/backfill tests."""
+    transfer = (
+        {"data": {"type": "accounts", "id": transfer_account_id}}
+        if transfer_account_id
+        else None
+    )
+    return UpTransaction.model_validate(
+        {
+            "type": "transactions",
+            "id": id,
+            "attributes": {
+                "status": "SETTLED",
+                "rawText": "Test Purchase",
+                "description": "Test Merchant",
+                "isCategorizable": True,
+                "amount": {
+                    "currencyCode": "AUD",
+                    "value": f"{amount_base_units / 100:.2f}",
+                    "valueInBaseUnits": amount_base_units,
+                },
+                "settledAt": created_at,
+                "createdAt": created_at,
+            },
+            "relationships": {
+                "account": {"data": {"type": "accounts", "id": account_id}},
+                "transferAccount": transfer,
+            },
+        }
+    )

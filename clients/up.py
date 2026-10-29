@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Protocol
+from urllib.parse import urlencode
 
 import httpx2 as httpx
 from pydantic import ValidationError
@@ -29,6 +31,10 @@ class UpClient(Protocol):
     async def get_transaction(self, transaction_id: str) -> UpTransaction: ...
 
     async def list_accounts(self) -> list[UpAccount]: ...
+
+    async def list_transactions(self, since: datetime) -> list[UpTransaction]:
+        """Transactions created at or after `since` (must be timezone-aware)."""
+        ...
 
     async def list_webhooks(self) -> list[UpWebhook]: ...
 
@@ -99,6 +105,14 @@ class HttpUpClient:
             ]
         except (ValidationError, KeyError, TypeError) as exc:
             raise UpstreamError("GET /accounts returned unexpected shape") from exc
+
+    async def list_transactions(self, since: datetime) -> list[UpTransaction]:
+        query = urlencode({"filter[since]": since.isoformat(), "page[size]": 100})
+        items = await self._list("/transactions?" + query)
+        try:
+            return [UpTransaction.model_validate(item) for item in items]
+        except (ValidationError, TypeError) as exc:
+            raise UpstreamError("GET /transactions returned unexpected shape") from exc
 
     async def list_webhooks(self) -> list[UpWebhook]:
         items = await self._list("/webhooks")

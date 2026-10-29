@@ -1,5 +1,6 @@
 import json
 import warnings
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,7 +15,7 @@ from forwarding.forwarder import Forwarder
 from models.up_models import UpTransaction, UpWebhook
 from tests.fakes.budget_index import FakeIndexHolder
 from tests.fakes.ledger import Entry, InMemoryLedger
-from tests.fakes.up import FakeUpClient
+from tests.fakes.up import FakeUpClient, up_transaction
 from tests.fakes.webhook_secrets import InMemoryWebhookSecretStore
 from tests.fakes.ynab import FakeYnabClient, ynab_transaction
 from utils.config import Settings
@@ -806,3 +807,84 @@ class TestAdminToken:
         assert "ADMIN_TOKEN not set; admin endpoints are open" not in [
             e["event"] for e in logs
         ]
+
+
+class TestBackfill:
+    AEST = timezone(timedelta(hours=10))
+
+    def _app(self, test_settings, fake_up, holder, ledger=None, token=None):
+        settings = test_settings.model_copy(update={"admin_token": token})
+        return create_app(
+            settings, make_services(fake_up, holder=holder, ledger=ledger)
+        )
+
+    def test_backfill_reports_counts(self, test_settings, fake_up, holder):
+        fake_up.transactions["elsewhere"] = up_transaction(
+            "elsewhere", "2026-10-05T01:00:00+00:00", account_id="unknown-account"
+        )
+        fake_up.transactions["done"] = up_transaction(
+            "done", "2026-10-06T01:00:00+00:00"
+        )
+        ledger = InMemoryLedger()
+        ledger.entries["done"] = Entry("forwarded", "ynab-9", None, 1)
+        ledger.entries["test-transaction-id"] = Entry("failed", None, "boom", 1)
+        app = self._app(test_settings, fake_up, holder, ledger)
+
+        with TestClient(app) as c:
+            response = c.post("/backfill?since=2024-01-01")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "forwarded": 1,
+            "skipped": 1,
+            "failed": 0,
+            "already_handled": 1,
+            "more_remaining": False,
+        }
+        assert fake_up.list_transactions_calls == [
+            datetime(2024, 1, 1, tzinfo=self.AEST)
+        ]
+
+    @pytest.mark.parametrize("query", ["?since=2026-13-01", "?since=yesterday", ""])
+    def test_bad_or_missing_date_is_422(self, test_settings, fake_up, holder, query):
+        with TestClient(self._app(test_settings, fake_up, holder)) as c:
+            response = c.post("/backfill" + query)
+
+        assert response.status_code == 422
+        assert fake_up.list_transactions_calls == []
+
+    def test_admin_token_is_required_when_set(self, test_settings, fake_up, holder):
+        with TestClient(self._app(test_settings, fake_up, holder, token="tok")) as c:
+            missing = c.post("/backfill?since=2024-01-01")
+            right = c.post(
+                "/backfill?since=2024-01-01",
+                headers={"Authorization": "Bearer tok"},
+            )
+
+        assert missing.status_code == 401
+        assert right.status_code == 200
+
+    def test_unset_token_leaves_backfill_open(self, test_settings, fake_up, holder):
+        with TestClient(self._app(test_settings, fake_up, holder)) as c:
+            assert c.post("/backfill?since=2024-01-01").status_code == 200
+
+    def test_up_listing_failure_is_502(self, test_settings, fake_up, holder):
+        fake_up.errors["list_transactions"] = UpstreamError("down", 503)
+
+        with TestClient(self._app(test_settings, fake_up, holder)) as c:
+            response = c.post("/backfill?since=2024-01-01")
+
+        assert response.status_code == 502
+        assert response.json() == {"detail": "Could not list Up transactions"}
+
+    def test_retried_skip_is_forwarded(self, test_settings, fake_up, holder):
+        ledger = InMemoryLedger()
+        ledger.entries["test-transaction-id"] = Entry(
+            "skipped", None, "Up account not in YNAB", 1, "account_not_in_ynab"
+        )
+
+        with TestClient(self._app(test_settings, fake_up, holder, ledger)) as c:
+            response = c.post("/backfill?since=2024-01-01")
+
+        assert response.json()["forwarded"] == 1
+        assert ledger.entries["test-transaction-id"].status == "forwarded"

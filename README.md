@@ -101,7 +101,7 @@ The container runs as uid 1000, so the host `data` folder must be writable by th
 
 ### Upgrading to 3.1 (webhook signatures)
 
-`/webhook` now verifies Up's signature (`X-Up-Authenticity-Signature`) and answers 401 without a valid one. Up gives each webhook a secret only when it is created, so the app stores it. On the first start after upgrading, your existing webhook has no stored secret: it is deleted and a new one is created (with `WEBHOOK_URL` set). Without `WEBHOOK_URL`, nothing can be registered and `/webhook` rejects every event. Set `ADMIN_TOKEN` to protect `/refresh`.
+`/webhook` now verifies Up's signature (`X-Up-Authenticity-Signature`) and answers 401 without a valid one. Up gives each webhook a secret only when it is created, so the app stores it. On the first start after upgrading, your existing webhook has no stored secret: it is deleted and a new one is created (with `WEBHOOK_URL` set). Without `WEBHOOK_URL`, nothing can be registered and `/webhook` rejects every event. Set `ADMIN_TOKEN` to protect `/refresh` and `/backfill`.
 
 Coming from 1.x: set `WEBHOOK_URL=<your-host>/webhook`. The old `/` webhook is removed on first start.
 
@@ -117,7 +117,7 @@ Transactions already forwarded by 2.x are not re-sent. The YNAB `import_id` is n
 | `YNAB_API_TOKEN` | ✅ | - | YNAB Personal Access Token |
 | `YNAB_BUDGET_ID` | ✅ | - | YNAB Budget ID |
 | `WEBHOOK_URL` | ❌ | - | Public URL ending `/webhook`; if unset, webhook registration is skipped |
-| `ADMIN_TOKEN` | ❌ | - | If set, `/refresh` needs `Authorization: Bearer <token>`; if unset it is open and a warning is logged at startup |
+| `ADMIN_TOKEN` | ❌ | - | If set, `/refresh` and `/backfill` need `Authorization: Bearer <token>`; if unset it is open and a warning is logged at startup |
 | `UP_BASE_URL` | ❌ | https://api.up.com.au/api/v1/ | Up Bank API base URL |
 | `YNAB_BASE_URL` | ❌ | https://api.youneedabudget.com/v1/ | YNAB API base URL |
 | `PORT` | ❌ | 5001 | port the container listens on (Docker/compose); pass --port when running uvicorn yourself |
@@ -137,6 +137,7 @@ Transfers between your Up accounts are recognised by Up's `transferAccount` rela
 - `GET /health` - Health check (`status`, `service`, `version` 3.0.0)
 - `POST /webhook` - Up Bank webhook receiver. Needs a valid `X-Up-Authenticity-Signature` (HMAC-SHA256 of the raw body under the secret of a webhook this app created), else 401. Answers 200 with status `forwarded`, `settled`, `skipped`, `deleted`, `flagged` or `ignored`, and 503 on failure so Up retries. `TRANSACTION_CREATED`, `TRANSACTION_SETTLED` and `TRANSACTION_DELETED` are acted on: a deleted transaction that was forwarded is deleted in YNAB if still uncleared, or flagged red if you have cleared or reconciled it; a settled transaction is marked cleared in YNAB (and its amount corrected) unless you have reconciled it.
 - `GET /refresh` - Reconciles webhooks, then rebuilds the Budget Index. With `ADMIN_TOKEN` set: `curl -H "Authorization: Bearer $ADMIN_TOKEN" https://your-domain.com/refresh` (401 otherwise)
+- `POST /backfill?since=YYYY-MM-DD` - Forwards Up transactions created on or after that day (Australian time) that YNAB doesn't have yet, e.g. after downtime or after adding a YNAB account that was missing (run `/refresh` first). Handled transactions are left alone; transactions skipped because their Up account wasn't in YNAB are retried. Stops after 150 YNAB creates and answers `more_remaining: true`; run it again. With `ADMIN_TOKEN` set: `curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" "http://localhost:5001/backfill?since=2026-10-01"` answers e.g. `{"forwarded": 12, "skipped": 3, "failed": 0, "already_handled": 40, "more_remaining": false}`. 502 if Up can't be listed.
 - `GET /docs` - Interactive API documentation
 
 ## Architecture
@@ -155,11 +156,12 @@ Up webhook ──▶ /webhook ──▶ Forwarder
 
 ## Limitations
 
-- `/webhook` verifies Up's signature, but `/refresh` is open unless `ADMIN_TOKEN` is set; anyone who can reach it can trigger a rebuild. Set `ADMIN_TOKEN`, or restrict access with a reverse proxy.
+- `/webhook` verifies Up's signature, but `/refresh` and `/backfill` are open unless `ADMIN_TOKEN` is set; anyone who can reach it can trigger a rebuild or a backfill. Set `ADMIN_TOKEN`, or restrict access with a reverse proxy.
 - A deleted transaction whose YNAB copy was cleared or reconciled is flagged red for review, not deleted.
 - A deleted event for a transaction that reached YNAB through the already-imported path (no YNAB id recorded) is ignored with a warning; remove it by hand.
 - If Up starts describing a merchant differently (for example once it recognises the merchant), the new description has no Category match until you categorise it in YNAB again. Payees renamed by your YNAB rename rules are matched.
-- An Up account with no matching YNAB account is skipped, and those transactions are not retried after you add the account.
+- An Up account with no matching YNAB account is skipped, and webhooks don't retry it after you add the account; run `/refresh`, then `POST /backfill?since=...` to forward them.
+- `/backfill` stops after 150 YNAB creates per run (YNAB allows 200 requests an hour) and works oldest first, so re-run it while `more_remaining` is true; it can report `more_remaining` when everything left was already handled. Its `since` date starts at midnight Australian Eastern Standard Time.
 - The database schema is created on startup; there are no migrations.
 
 ## Deployment Options
@@ -212,7 +214,7 @@ Built-in Docker health checks monitor service availability every 30 seconds.
 up-to-ynab/
 ├── app.py            # Composition root, VERSION, routes, lifespan
 ├── webhooks.py       # Pure webhook reconciliation planner, signature check
-├── forwarding/       # Forwarder, translation, Budget Index, Ledger
+├── forwarding/       # Forwarder, backfill, translation, Budget Index, Ledger
 ├── clients/          # Up and YNAB client Protocols and HTTP adapters
 ├── database/         # SQLAlchemy models, connection and migration runner
 ├── migrations/       # Alembic revisions

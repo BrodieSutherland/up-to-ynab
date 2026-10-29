@@ -14,9 +14,11 @@ from forwarding.ledger import (
     Ledger,
     Outcome,
     Skipped,
+    backfill_retryable,
 )
 from forwarding.translation import Skip, cleared_status, translate, ynab_date
-from models.up_models import UpWebhookEvent
+from models.up_models import UpTransaction, UpWebhookEvent
+from models.ynab_models import YnabTransactionDetail
 
 logger = structlog.get_logger()
 
@@ -35,6 +37,14 @@ class Settled:
 
     up_transaction_id: str
     ynab_transaction_id: str
+
+
+@dataclass(frozen=True)
+class BackfillStep:
+    """The result of backfilling one Up transaction."""
+
+    outcome: Forwarded | Skipped | Failed | Ignored
+    ynab_create_called: bool
 
 
 HANDLED_EVENTS = (
@@ -98,16 +108,42 @@ class Forwarder:
         except Exception as e:
             outcome = self._failed(up_id, e)
 
+        return await self._record(outcome)
+
+    async def _record(self, outcome):
+        """Store the outcome; a Ledger error becomes a Failed."""
         try:
             await self._ledger.record(outcome)
         except Exception as e:
             logger.error(
                 "Failed to record outcome",
-                up_transaction_id=up_id,
+                up_transaction_id=outcome.up_transaction_id,
                 exc_info=e,
             )
-            return Failed(up_id, "Could not record outcome")
+            return Failed(outcome.up_transaction_id, "Could not record outcome")
         return outcome
+
+    async def backfill_one(self, tx: UpTransaction) -> BackfillStep:
+        """Forward an already-fetched Up transaction unless it is handled.
+
+        A skip for an unmatched account is retried; any other handled row is
+        left alone. Never fetches from Up.
+        """
+        called = False
+        outcome: Outcome | Ignored
+        try:
+            if not backfill_retryable(await self._ledger.lookup(tx.id)):
+                logger.info("Ignoring handled transaction", up_transaction_id=tx.id)
+                return BackfillStep(Ignored(tx.id, "already handled"), False)
+            prepared = await self._prepare(tx.id, tx)
+            if isinstance(prepared, Skipped):
+                outcome = prepared
+            else:
+                called = True
+                outcome = await self._create(tx.id, tx, prepared)
+        except Exception as e:
+            outcome = self._failed(tx.id, e)
+        return BackfillStep(await self._record(outcome), called)
 
     async def _handle_deleted(self, up_id: str) -> Deleted | Ignored | Failed:
         """Delete or flag the YNAB copy of a forwarded transaction Up deleted."""
@@ -134,14 +170,7 @@ class Forwarder:
             # Record nothing: a forwarded row must not become failed.
             return self._failed(up_id, e)
 
-        try:
-            await self._ledger.record(outcome)
-        except Exception as e:
-            logger.error(
-                "Failed to record outcome", up_transaction_id=up_id, exc_info=e
-            )
-            return Failed(up_id, "Could not record outcome")
-        return outcome
+        return await self._record(outcome)
 
     async def _remove_from_ynab(self, up_id: str, ynab_id: str) -> Deleted:
         """Delete the YNAB copy if uncleared, else flag it red for review."""
@@ -247,22 +276,38 @@ class Forwarder:
 
     async def _forward(self, up_id: str) -> Forwarded | Skipped:
         tx = await self._up.get_transaction(up_id)
+        prepared = await self._prepare(up_id, tx)
+        if isinstance(prepared, Skipped):
+            return prepared
+        return await self._create(up_id, tx, prepared)
+
+    async def _prepare(
+        self, up_id: str, tx: UpTransaction
+    ) -> YnabTransactionDetail | Skipped:
+        """Translate the transaction, or say it is skipped."""
         index = await self._holder.current_for(tx.account_id)
         translated = translate(tx, index)
         if isinstance(translated, Skip):
             logger.info(
-                "Transaction skipped", up_transaction_id=up_id, reason=translated.reason
+                "Transaction skipped",
+                up_transaction_id=up_id,
+                reason=translated.reason,
             )
-            return Skipped(up_id, translated.reason)
+            return Skipped(up_id, translated.reason, translated.code)
+        return translated
 
-        created = await self._ynab.create_transaction(translated)
+    async def _create(
+        self, up_id: str, tx: UpTransaction, detail: YnabTransactionDetail
+    ):
+        """Create the transaction in YNAB (a 409 counts as forwarded)."""
+        created = await self._ynab.create_transaction(detail)
         if isinstance(created, Created):
             logger.info(
                 "Transaction forwarded",
                 up_transaction_id=up_id,
                 ynab_transaction_id=created.ynab_id,
                 payee=tx.payee,
-                category_id=translated.category_id,
+                category_id=detail.category_id,
             )
             return Forwarded(up_id, created.ynab_id)
         logger.info("Already in YNAB", up_transaction_id=up_id)

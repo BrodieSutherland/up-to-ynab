@@ -29,6 +29,7 @@ class LedgerEntry(Base):
         String(50), nullable=True
     )
     reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    reason_code: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     attempts: Mapped[int] = mapped_column(default=1)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=_utcnow, onupdate=_utcnow
