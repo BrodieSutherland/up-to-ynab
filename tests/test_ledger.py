@@ -1,6 +1,13 @@
 import pytest
 
-from forwarding.ledger import Failed, Forwarded, LedgerState, Skipped, SqlLedger
+from forwarding.ledger import (
+    Deleted,
+    Failed,
+    Forwarded,
+    LedgerState,
+    Skipped,
+    SqlLedger,
+)
 from tests.fakes.ledger import InMemoryLedger
 
 
@@ -83,3 +90,50 @@ async def test_lookup_failed(ledger):
     await ledger.record(Failed("tx1", "boom"))
 
     assert await ledger.lookup("tx1") == LedgerState("failed", None)
+
+
+async def test_forwarded_then_deleted_is_final(ledger):
+    await ledger.record(Forwarded("tx1", "ynab-1"))
+    await ledger.record(Deleted("tx1", "ynab-1", False, "deleted in YNAB"))
+
+    assert await ledger.lookup("tx1") == LedgerState("deleted", "ynab-1")
+    assert await ledger.is_handled("tx1") is True
+    assert await ledger.attempts("tx1") == 1
+
+
+async def test_deleted_without_entry_records_nothing(ledger):
+    await ledger.record(Deleted("tx1", "ynab-1", False, "deleted in YNAB"))
+
+    assert await ledger.lookup("tx1") is None
+
+
+async def test_deleted_leaves_skipped_and_failed_untouched(ledger):
+    await ledger.record(Skipped("tx1", "no account"))
+    await ledger.record(Failed("tx2", "boom"))
+
+    await ledger.record(Deleted("tx1", "ynab-1", False, "deleted in YNAB"))
+    await ledger.record(Deleted("tx2", "ynab-2", False, "deleted in YNAB"))
+
+    assert await ledger.lookup("tx1") == LedgerState("skipped", None)
+    assert await ledger.lookup("tx2") == LedgerState("failed", None)
+
+
+async def test_deleted_is_not_overwritten(ledger):
+    await ledger.record(Forwarded("tx1", "ynab-1"))
+    await ledger.record(Deleted("tx1", "ynab-1", False, "deleted in YNAB"))
+
+    await ledger.record(Failed("tx1", "boom"))
+    await ledger.record(Forwarded("tx1", "ynab-2"))
+
+    assert await ledger.lookup("tx1") == LedgerState("deleted", "ynab-1")
+    assert await ledger.attempts("tx1") == 1
+
+
+async def test_deleted_reason_is_stored(database):
+    sql = SqlLedger(database.get_session)
+    await sql.record(Forwarded("tx1", "ynab-1"))
+    await sql.record(Deleted("tx1", "ynab-1", True, "flagged red: cleared in YNAB"))
+
+    async with database.get_session() as session:
+        entry = await sql._entry(session, "tx1")
+    assert entry.reason == "flagged red: cleared in YNAB"

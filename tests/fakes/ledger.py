@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from forwarding.ledger import Forwarded, LedgerState, Outcome, Skipped
+from forwarding.ledger import Deleted, Forwarded, LedgerState, Outcome, Skipped
 
 
 @dataclass
@@ -45,10 +45,15 @@ class InMemoryLedger:
             fields = ("forwarded", outcome.ynab_transaction_id, None)
         elif isinstance(outcome, Skipped):
             fields = ("skipped", None, outcome.reason)
+        elif isinstance(outcome, Deleted):
+            fields = ("deleted", outcome.ynab_transaction_id, outcome.reason)
         else:
             fields = ("failed", None, outcome.reason)
         entry = self.entries.get(up_id)
-        if entry is None:
+        if isinstance(outcome, Deleted):
+            if entry is not None and entry.status == "forwarded":
+                entry.status, entry.reason = fields[0], fields[2]
+        elif entry is None:
             self.entries[up_id] = Entry(*fields, attempts=1)
         elif entry.status == "failed":
             entry.status, entry.ynab_transaction_id, entry.reason = fields

@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+from structlog.testing import capture_logs
 
 from clients.errors import UpstreamError
 from forwarding.budget_index import (
@@ -10,7 +11,7 @@ from forwarding.budget_index import (
     YnabAccountRef,
 )
 from forwarding.forwarder import Forwarder, Ignored, Settled
-from forwarding.ledger import Failed, Forwarded, Skipped
+from forwarding.ledger import Deleted, Failed, Forwarded, Skipped
 from models.up_models import UpTransaction, UpWebhookEvent
 from tests.fakes.budget_index import FakeIndexHolder
 from tests.fakes.ledger import InMemoryLedger
@@ -498,3 +499,239 @@ async def test_held_409_does_not_patch(settled_event, ledger):
 
     assert result == Forwarded(SETTLED_ID, None)
     assert ynab.updates == []
+
+
+DELETED_ID = "transactions-2001"
+
+
+@pytest.fixture
+def deleted_event():
+    return load_event("TRANSACTION_DELETED_1")
+
+
+def deleted_forwarder(ynab, ledger):
+    return Forwarder(FakeUpClient(), ynab, FakeIndexHolder(ROUND_UP_INDEX), ledger)
+
+
+def ynab_with(cleared, errors=None):
+    return FakeYnabClient(
+        transactions=[ynab_transaction("ynab-tx-1", "Shop", None, cleared=cleared)],
+        errors=errors,
+    )
+
+
+async def seed_forwarded(ledger, ynab_id="ynab-tx-1"):
+    await ledger.record(Forwarded(DELETED_ID, ynab_id))
+
+
+class TestDeleted:
+    async def test_uncleared_copy_is_deleted(self, deleted_event, ledger):
+        ynab = ynab_with("uncleared")
+        await seed_forwarded(ledger)
+
+        result = await deleted_forwarder(ynab, ledger).handle(deleted_event)
+
+        assert result == Deleted(DELETED_ID, "ynab-tx-1", False, "deleted in YNAB")
+        assert ynab.deleted_ids == ["ynab-tx-1"]
+        assert ledger.entries[DELETED_ID].status == "deleted"
+
+    async def test_cleared_copy_is_flagged_red(self, deleted_event, ledger):
+        ynab = ynab_with("cleared")
+        await seed_forwarded(ledger)
+
+        with capture_logs() as logs:
+            result = await deleted_forwarder(ynab, ledger).handle(deleted_event)
+
+        assert result == Deleted(
+            DELETED_ID, "ynab-tx-1", True, "flagged red: cleared in YNAB"
+        )
+        assert ynab.flagged == [("ynab-tx-1", "red")]
+        assert ynab.deleted_ids == []
+        assert ledger.entries[DELETED_ID].status == "deleted"
+        assert [
+            log["log_level"]
+            for log in logs
+            if log["event"].startswith("Deleted in Up but already cleared")
+        ] == ["warning"]
+
+    async def test_reconciled_copy_is_flagged_red(self, deleted_event, ledger):
+        ynab = ynab_with("reconciled")
+        await seed_forwarded(ledger)
+
+        result = await deleted_forwarder(ynab, ledger).handle(deleted_event)
+
+        assert result == Deleted(
+            DELETED_ID, "ynab-tx-1", True, "flagged red: reconciled in YNAB"
+        )
+        assert ynab.flagged == [("ynab-tx-1", "red")]
+
+    async def test_copy_missing_in_ynab_counts_as_gone(self, deleted_event, ledger):
+        ynab = FakeYnabClient()
+        await seed_forwarded(ledger)
+
+        result = await deleted_forwarder(ynab, ledger).handle(deleted_event)
+
+        assert result == Deleted(
+            DELETED_ID, "ynab-tx-1", False, "already deleted in YNAB"
+        )
+        assert ledger.entries[DELETED_ID].status == "deleted"
+
+    async def test_copy_already_deleted_in_ynab(self, deleted_event, ledger):
+        ynab = FakeYnabClient(
+            transactions=[ynab_transaction("ynab-tx-1", "Shop", None, deleted=True)]
+        )
+        await seed_forwarded(ledger)
+
+        result = await deleted_forwarder(ynab, ledger).handle(deleted_event)
+
+        assert result == Deleted(
+            DELETED_ID, "ynab-tx-1", False, "already deleted in YNAB"
+        )
+        assert ynab.deleted_ids == []
+
+    async def test_delete_answering_404_counts_as_gone(self, deleted_event, ledger):
+        ynab = ynab_with("uncleared", {"delete_transaction": UpstreamError("x", 404)})
+        await seed_forwarded(ledger)
+
+        result = await deleted_forwarder(ynab, ledger).handle(deleted_event)
+
+        assert result == Deleted(
+            DELETED_ID, "ynab-tx-1", False, "already deleted in YNAB"
+        )
+
+    async def test_never_seen_is_ignored_without_calling_ynab(
+        self, deleted_event, ledger
+    ):
+        ynab = ynab_with("uncleared", {"get_transaction": UpstreamError("boom", 500)})
+
+        result = await deleted_forwarder(ynab, ledger).handle(deleted_event)
+
+        assert result == Ignored(DELETED_ID, "not forwarded to YNAB")
+        assert ledger.entries == {}
+
+    async def test_skipped_and_failed_rows_are_left(self, deleted_event, ledger):
+        ynab = ynab_with("uncleared")
+        forwarder = deleted_forwarder(ynab, ledger)
+        await ledger.record(Skipped(DELETED_ID, "no account"))
+
+        skipped = await forwarder.handle(deleted_event)
+
+        assert skipped == Ignored(DELETED_ID, "not forwarded to YNAB")
+        assert ledger.entries[DELETED_ID].status == "skipped"
+
+        ledger.entries.clear()
+        await ledger.record(Failed(DELETED_ID, "boom"))
+
+        failed = await forwarder.handle(deleted_event)
+
+        assert failed == Ignored(DELETED_ID, "not forwarded to YNAB")
+        assert ledger.entries[DELETED_ID].status == "failed"
+        assert ynab.deleted_ids == []
+
+    async def test_already_deleted_is_ignored(self, deleted_event, ledger):
+        ynab = ynab_with("uncleared")
+        await seed_forwarded(ledger)
+        forwarder = deleted_forwarder(ynab, ledger)
+        await forwarder.handle(deleted_event)
+
+        result = await forwarder.handle(deleted_event)
+
+        assert result == Ignored(DELETED_ID, "already deleted")
+        assert ynab.deleted_ids == ["ynab-tx-1"]
+
+    async def test_forwarded_without_ynab_id_is_ignored_with_warning(
+        self, deleted_event, ledger
+    ):
+        ynab = ynab_with("uncleared")
+        await seed_forwarded(ledger, None)
+
+        with capture_logs() as logs:
+            result = await deleted_forwarder(ynab, ledger).handle(deleted_event)
+
+        assert result == Ignored(DELETED_ID, "forwarded without a YNAB id")
+        assert ledger.entries[DELETED_ID].status == "forwarded"
+        assert ynab.deleted_ids == []
+        assert any(log["log_level"] == "warning" for log in logs)
+
+    @pytest.mark.parametrize("method", ["get_transaction", "delete_transaction"])
+    async def test_ynab_failure_is_failed_and_row_kept(
+        self, deleted_event, ledger, method
+    ):
+        ynab = ynab_with("uncleared", {method: UpstreamError("boom", 500)})
+        await seed_forwarded(ledger)
+
+        result = await deleted_forwarder(ynab, ledger).handle(deleted_event)
+
+        assert result == Failed(DELETED_ID, "boom")
+        assert ledger.entries[DELETED_ID].status == "forwarded"
+        assert ledger.entries[DELETED_ID].attempts == 1
+
+    async def test_flag_failure_is_failed_and_row_kept(self, deleted_event, ledger):
+        ynab = ynab_with("cleared", {"flag_transaction": UpstreamError("boom", 500)})
+        await seed_forwarded(ledger)
+
+        result = await deleted_forwarder(ynab, ledger).handle(deleted_event)
+
+        assert result == Failed(DELETED_ID, "boom")
+        assert ledger.entries[DELETED_ID].status == "forwarded"
+        assert ledger.entries[DELETED_ID].attempts == 1
+
+    async def test_record_error_is_failed_then_redelivery_converges(
+        self, deleted_event, ledger
+    ):
+        ynab = ynab_with("uncleared")
+        await seed_forwarded(ledger)
+        forwarder = deleted_forwarder(ynab, ledger)
+        ledger.errors["record"] = RuntimeError("db down")
+
+        result = await forwarder.handle(deleted_event)
+
+        assert result == Failed(DELETED_ID, "Could not record outcome")
+        assert ynab.deleted_ids == ["ynab-tx-1"]
+
+        del ledger.errors["record"]
+        again = await forwarder.handle(deleted_event)
+
+        assert again == Deleted(
+            DELETED_ID, "ynab-tx-1", False, "already deleted in YNAB"
+        )
+        assert ledger.entries[DELETED_ID].status == "deleted"
+
+    async def test_lookup_error_is_failed(self, deleted_event, ledger):
+        ledger.errors["lookup"] = RuntimeError("db down")
+
+        result = await deleted_forwarder(ynab_with("uncleared"), ledger).handle(
+            deleted_event
+        )
+
+        assert result == Failed(DELETED_ID, "Unexpected error: db down")
+
+    async def test_deleted_then_created_of_another_id_forwards(
+        self, deleted_event, ledger
+    ):
+        ynab = ynab_with("uncleared")
+        await seed_forwarded(ledger)
+        up = FakeUpClient(
+            transactions={"transactions-1": load_tx("purchase_with_round_up_1")}
+        )
+        forwarder = Forwarder(up, ynab, FakeIndexHolder(ROUND_UP_INDEX), ledger)
+        await forwarder.handle(deleted_event)
+        created = load_event("TRANSACTION_CREATED_1")
+
+        result = await forwarder.handle(created)
+
+        assert result == Forwarded("transactions-1", "ynab-1")
+
+    @pytest.mark.parametrize(
+        "name, up_id",
+        [
+            ("TRANSACTION_DELETED_2", "transactions-2002"),
+            ("TRANSACTION_DELETED_3", "transactions-2003"),
+        ],
+    )
+    async def test_other_delivered_events_with_empty_ledger(self, ledger, name, up_id):
+        result = await deleted_forwarder(FakeYnabClient(), ledger).handle(
+            load_event(name)
+        )
+
+        assert result == Ignored(up_id, "not forwarded to YNAB")

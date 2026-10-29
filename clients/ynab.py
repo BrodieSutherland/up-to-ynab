@@ -37,6 +37,10 @@ class YnabClient(Protocol):
         self, ynab_id: str, cleared: str, amount: int | None
     ) -> None: ...
 
+    async def delete_transaction(self, ynab_id: str) -> None: ...
+
+    async def flag_transaction(self, ynab_id: str, flag_color: str = "red") -> None: ...
+
 
 class HttpYnabClient:
     """YnabClient over an injected httpx2.AsyncClient (the caller closes it)."""
@@ -123,6 +127,16 @@ class HttpYnabClient:
         change: dict[str, Any] = {"id": ynab_id, "cleared": cleared}
         if amount is not None:
             change["amount"] = amount
+        await self._patch_transactions(change)
+
+    async def flag_transaction(self, ynab_id: str, flag_color: str = "red") -> None:
+        """Set the flag colour, leaving everything else as it is."""
+        await self._patch_transactions({"id": ynab_id, "flag_color": flag_color})
+
+    async def delete_transaction(self, ynab_id: str) -> None:
+        await self._request("DELETE", f"{self._plan}/transactions/{ynab_id}")
+
+    async def _patch_transactions(self, change: dict[str, Any]) -> None:
         await self._request(
             "PATCH", f"{self._plan}/transactions", json={"transactions": [change]}
         )

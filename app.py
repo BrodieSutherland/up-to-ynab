@@ -17,7 +17,7 @@ from clients.ynab import HttpYnabClient, YnabClient
 from database.connection import DatabaseManager
 from forwarding.budget_index import BudgetIndexHolder, rebuild_periodically
 from forwarding.forwarder import Forwarder, Settled
-from forwarding.ledger import Failed, Forwarded, Skipped, SqlLedger
+from forwarding.ledger import Deleted, Failed, Forwarded, Skipped, SqlLedger
 from models.up_models import UpWebhookEvent
 from utils.config import Settings
 from utils.logging import setup_logging
@@ -40,7 +40,9 @@ class WebhookResponse(BaseModel):
                 {"status": "forwarded", "result": "ynab-transaction-id"},
                 {"status": "forwarded", "result": "already in YNAB"},
                 {"status": "skipped", "result": "Mirror side of a Transfer"},
-                {"status": "ignored", "result": "not a transaction creation"},
+                {"status": "deleted", "result": "deleted in YNAB"},
+                {"status": "flagged", "result": "flagged red: cleared in YNAB"},
+                {"status": "ignored", "result": "not a transaction event"},
                 {"status": "failed", "result": "POST /transactions -> 500"},
             ]
         }
@@ -278,8 +280,13 @@ def create_app(
         leaving reconciled transactions alone; a transaction never forwarded is
         created (already cleared).
 
+        TRANSACTION_DELETED deletes the YNAB copy of a forwarded transaction if
+        it is still uncleared; a cleared or reconciled copy is flagged red for
+        review instead. Transactions never forwarded are ignored.
+
         Answers 503 when handling failed so Up redelivers the event;
-        otherwise 200 with status forwarded, settled, skipped or ignored.
+        otherwise 200 with status forwarded, skipped, settled, deleted, flagged
+        or ignored.
         """,
     )
     async def handle_webhook(webhook_event: UpWebhookEvent) -> JSONResponse:
@@ -293,6 +300,11 @@ def create_app(
             )
         elif isinstance(outcome, Settled):
             body = WebhookResponse(status="settled", result=outcome.ynab_transaction_id)
+        elif isinstance(outcome, Deleted):
+            body = WebhookResponse(
+                status="flagged" if outcome.flagged else "deleted",
+                result=outcome.reason,
+            )
         elif isinstance(outcome, Skipped):
             body = WebhookResponse(status="skipped", result=outcome.reason)
         elif isinstance(outcome, Failed):

@@ -22,7 +22,9 @@ class LedgerEntry(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     up_transaction_id: Mapped[str] = mapped_column(String(50), unique=True, index=True)
-    status: Mapped[str] = mapped_column(String(20))  # forwarded, skipped, failed
+    status: Mapped[str] = mapped_column(
+        String(20)
+    )  # forwarded, skipped, failed, deleted
     ynab_transaction_id: Mapped[Optional[str]] = mapped_column(
         String(50), nullable=True
     )

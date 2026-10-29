@@ -235,6 +235,59 @@ class TestUpdateTransaction:
             await client.update_transaction("ynab-tx-1", "cleared", None)
 
 
+class TestDeleteTransaction:
+    async def test_sends_delete(self):
+        client, requests = make_client(
+            respond(200, {"data": {"transaction": {"id": "ynab-tx-1"}}})
+        )
+
+        await client.delete_transaction("ynab-tx-1")
+
+        [request] = requests
+        assert request.method == "DELETE"
+        assert request.url.path == "/v1/plans/test_budget_id/transactions/ynab-tx-1"
+        assert request.headers["Authorization"] == "Bearer test_ynab_token"
+
+    @pytest.mark.parametrize("status", [404, 500])
+    async def test_error_status_raises_with_status_code(self, status):
+        client, _ = make_client(respond(status))
+
+        with pytest.raises(UpstreamError) as info:
+            await client.delete_transaction("ynab-tx-1")
+
+        assert info.value.status_code == status
+
+    async def test_transport_error_raises(self):
+        def handler(request):
+            raise httpx.ConnectError("refused", request=request)
+
+        client, _ = make_client(handler)
+
+        with pytest.raises(UpstreamError):
+            await client.delete_transaction("ynab-tx-1")
+
+
+class TestFlagTransaction:
+    async def test_patches_flag_colour(self):
+        client, requests = make_client(respond(209, {"data": {}}))
+
+        await client.flag_transaction("ynab-tx-1")
+
+        [request] = requests
+        assert request.method == "PATCH"
+        assert request.url.path == "/v1/plans/test_budget_id/transactions"
+        assert request.headers["Authorization"] == "Bearer test_ynab_token"
+        assert json.loads(request.content) == {
+            "transactions": [{"id": "ynab-tx-1", "flag_color": "red"}]
+        }
+
+    async def test_error_status_raises(self):
+        client, _ = make_client(respond(500))
+
+        with pytest.raises(UpstreamError):
+            await client.flag_transaction("ynab-tx-1")
+
+
 async def test_token_never_logged_or_in_errors(detail):
     def handler(request):
         raise httpx.ConnectError("refused", request=request)

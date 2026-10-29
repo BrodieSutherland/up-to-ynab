@@ -130,7 +130,7 @@ Transfers between your Up accounts are recognised by Up's `transferAccount` rela
 ## API Endpoints
 
 - `GET /health` - Health check (`status`, `service`, `version` 3.0.0)
-- `POST /webhook` - Up Bank webhook receiver. Answers 200 with status `forwarded`, `settled`, `skipped` or `ignored`, and 503 on failure so Up retries. `TRANSACTION_CREATED` and `TRANSACTION_SETTLED` are acted on: a settled transaction is marked cleared in YNAB (and its amount corrected) unless you have reconciled it.
+- `POST /webhook` - Up Bank webhook receiver. Answers 200 with status `forwarded`, `settled`, `skipped`, `deleted`, `flagged` or `ignored`, and 503 on failure so Up retries. `TRANSACTION_CREATED`, `TRANSACTION_SETTLED` and `TRANSACTION_DELETED` are acted on: a deleted transaction that was forwarded is deleted in YNAB if still uncleared, or flagged red if you have cleared or reconciled it; a settled transaction is marked cleared in YNAB (and its amount corrected) unless you have reconciled it.
 - `GET /refresh` - Reconciles webhooks, then rebuilds the Budget Index
 - `GET /docs` - Interactive API documentation
 
@@ -146,12 +146,13 @@ Up webhook ──▶ /webhook ──▶ Forwarder
 ```
 
 - **Budget Index**: YNAB accounts and the Category match, built at startup, every 6 hours, on `/refresh`, and lazily for an unknown Up account.
-- **Ledger**: one row per Up transaction in the SQLite `ledger_entries` table; forwarded and skipped are final, failed is retried on redelivery.
+- **Ledger**: one row per Up transaction in the SQLite `ledger_entries` table; forwarded and skipped are final (a forwarded row becomes deleted, also final, when Up deletes the transaction), failed is retried on redelivery.
 
 ## Limitations
 
 - `/webhook` and `/refresh` have no authentication, and Up's `X-Up-Authenticity-Signature` is not verified. Anyone who knows the URL can make the app fetch and forward a transaction (only real Up transactions, via your token) or trigger a rebuild. Keep the URL private, or put the app behind a reverse proxy that restricts access.
-- Deleted events are ignored, so a cancelled hold stays in YNAB until you remove it.
+- A deleted transaction whose YNAB copy was cleared or reconciled is flagged red for review, not deleted.
+- A deleted event for a transaction that reached YNAB through the already-imported path (no YNAB id recorded) is ignored with a warning; remove it by hand.
 - The Category match uses the Up description, so a payee you rename in YNAB is no longer matched.
 - An Up account with no matching YNAB account is skipped, and those transactions are not retried after you add the account.
 - The database schema is created on startup; there are no migrations.

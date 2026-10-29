@@ -163,6 +163,79 @@ class TestAPIEndpoints:
         assert response.json() == {"status": "failed", "result": "ynab down"}
         assert ledger.entries["test-transaction-id"].status == "forwarded"
 
+    def _deleted(self, test_settings, fake_up, data, ynab, seed=True):
+        data["data"]["attributes"]["eventType"] = "TRANSACTION_DELETED"
+        ledger = InMemoryLedger()
+        if seed:
+            ledger.entries["test-transaction-id"] = Entry(
+                "forwarded", "ynab-x", None, 1
+            )
+        app = create_app(test_settings, make_services(fake_up, ynab, ledger=ledger))
+        with TestClient(app) as c:
+            return c.post("/webhook", json=data)
+
+    def test_webhook_deleted_uncleared_is_deleted(
+        self, test_settings, fake_up, sample_up_webhook_event_data
+    ):
+        ynab = FakeYnabClient(
+            transactions=[ynab_transaction("ynab-x", "Shop", None, cleared="uncleared")]
+        )
+
+        response = self._deleted(
+            test_settings, fake_up, sample_up_webhook_event_data, ynab
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "deleted", "result": "deleted in YNAB"}
+        assert ynab.deleted_ids == ["ynab-x"]
+
+    def test_webhook_deleted_cleared_is_flagged(
+        self, test_settings, fake_up, sample_up_webhook_event_data
+    ):
+        ynab = FakeYnabClient(
+            transactions=[ynab_transaction("ynab-x", "Shop", None, cleared="cleared")]
+        )
+
+        response = self._deleted(
+            test_settings, fake_up, sample_up_webhook_event_data, ynab
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "status": "flagged",
+            "result": "flagged red: cleared in YNAB",
+        }
+        assert ynab.flagged == [("ynab-x", "red")]
+
+    def test_webhook_deleted_unknown_is_ignored(
+        self, test_settings, fake_up, sample_up_webhook_event_data
+    ):
+        response = self._deleted(
+            test_settings,
+            fake_up,
+            sample_up_webhook_event_data,
+            FakeYnabClient(),
+            seed=False,
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "status": "ignored",
+            "result": "not forwarded to YNAB",
+        }
+
+    def test_webhook_deleted_ynab_failure_is_503(
+        self, test_settings, fake_up, sample_up_webhook_event_data
+    ):
+        ynab = FakeYnabClient(errors={"get_transaction": UpstreamError("boom", 500)})
+
+        response = self._deleted(
+            test_settings, fake_up, sample_up_webhook_event_data, ynab
+        )
+
+        assert response.status_code == 503
+        assert response.json() == {"status": "failed", "result": "boom"}
+
     def test_webhook_other_event_is_ignored(self, client, sample_up_webhook_event_data):
         sample_up_webhook_event_data["data"]["attributes"]["eventType"] = "PING"
 

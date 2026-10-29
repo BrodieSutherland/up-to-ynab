@@ -71,6 +71,8 @@ class FakeYnabClient:
         self.since_dates: list[str] = []
         self.updates: list[tuple[str, str, int | None]] = []
         self.list_accounts_calls = 0
+        self.deleted_ids: list[str] = []
+        self.flagged: list[tuple[str, str]] = []
 
     def _maybe_raise(self, method: str) -> None:
         if method in self.errors:
@@ -107,3 +109,15 @@ class FakeYnabClient:
     ) -> None:
         self._maybe_raise("update_transaction")
         self.updates.append((ynab_id, cleared, amount))
+
+    async def delete_transaction(self, ynab_id: str) -> None:
+        self._maybe_raise("delete_transaction")
+        self.deleted_ids.append(ynab_id)
+        self.transactions = [
+            t.model_copy(update={"deleted": True}) if t.id == ynab_id else t
+            for t in self.transactions
+        ]
+
+    async def flag_transaction(self, ynab_id: str, flag_color: str = "red") -> None:
+        self._maybe_raise("flag_transaction")
+        self.flagged.append((ynab_id, flag_color))

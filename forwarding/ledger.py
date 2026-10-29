@@ -34,14 +34,24 @@ class Failed:
     reason: str
 
 
-Outcome = Forwarded | Skipped | Failed
+@dataclass(frozen=True)
+class Deleted:
+    """Up deleted a forwarded transaction; its YNAB copy was deleted or flagged."""
+
+    up_transaction_id: str
+    ynab_transaction_id: str
+    flagged: bool
+    reason: str
+
+
+Outcome = Forwarded | Skipped | Failed | Deleted
 
 
 @dataclass(frozen=True)
 class LedgerState:
     """What the Ledger holds for an Up transaction."""
 
-    status: str  # forwarded, skipped or failed
+    status: str  # forwarded, skipped, failed or deleted
     ynab_transaction_id: str | None
 
 
@@ -49,7 +59,7 @@ class Ledger(Protocol):
     """Record of what happened to each Up transaction."""
 
     async def is_handled(self, up_transaction_id: str) -> bool:
-        """True once forwarded or skipped; a failed transaction is not handled."""
+        """True once forwarded, skipped or deleted; a failed one is not handled."""
         ...
 
     async def lookup(self, up_transaction_id: str) -> LedgerState | None:
@@ -57,7 +67,9 @@ class Ledger(Protocol):
         ...
 
     async def record(self, outcome: Outcome) -> None:
-        """Store an outcome. A handled transaction is never overwritten."""
+        """Store an outcome. A handled transaction is never overwritten, except
+        that a forwarded one becomes deleted (a Deleted for any other row is
+        not recorded)."""
         ...
 
 
@@ -67,6 +79,8 @@ def _fields(outcome: Outcome) -> tuple[str, str | None, str | None]:
         return "forwarded", outcome.ynab_transaction_id, None
     if isinstance(outcome, Skipped):
         return "skipped", None, outcome.reason
+    if isinstance(outcome, Deleted):
+        return "deleted", outcome.ynab_transaction_id, outcome.reason
     return "failed", None, outcome.reason
 
 
@@ -107,7 +121,16 @@ class SqlLedger:
         up_id = outcome.up_transaction_id
         async with self._session_factory() as session:
             entry = await self._entry(session, up_id)
-            if entry is None:
+            if isinstance(outcome, Deleted):
+                if entry is None or entry.status != "forwarded":
+                    logger.warning(
+                        "Ledger entry not forwarded; deletion not recorded",
+                        up_transaction_id=up_id,
+                    )
+                else:
+                    entry.status = status
+                    entry.reason = reason
+            elif entry is None:
                 session.add(
                     LedgerEntry(
                         up_transaction_id=up_id,
