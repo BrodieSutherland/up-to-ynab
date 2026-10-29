@@ -66,8 +66,8 @@ class Settings(BaseSettings):
     @field_validator("admin_token", mode="before")
     @classmethod
     def _blank_admin_token_is_unset(cls, value):
-        if isinstance(value, str) and not value.strip():
-            return None
+        if isinstance(value, str):
+            return value.strip() or None
         return value
 
     def ignored_env_vars(self) -> list[str]:

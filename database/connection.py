@@ -35,6 +35,8 @@ class DatabaseManager:
             poolclass=StaticPool if memory else None,
             connect_args={"check_same_thread": False} if memory else {},
             echo=echo,
+            # Bound values include webhook secrets; never let echo print them.
+            hide_parameters=True,
         )
         self.async_session = async_sessionmaker(
             self.engine,

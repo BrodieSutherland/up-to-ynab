@@ -42,3 +42,17 @@ async def test_deleting_an_unknown_id_is_a_no_op(store):
     await store.delete("nope")
 
     assert await store.all() == {}
+
+
+async def test_echo_never_prints_bound_secret_values(caplog):
+    from database.connection import DatabaseManager
+
+    manager = DatabaseManager("sqlite+aiosqlite:///:memory:", echo=True)
+    assert manager.engine.sync_engine.hide_parameters is True
+    await manager.migrate()
+    with caplog.at_level("INFO", logger="sqlalchemy.engine"):
+        await SqlWebhookSecretStore(manager.get_session).save("hook-1", "s3cr3t-value")
+
+    assert "INSERT" in caplog.text
+    assert "s3cr3t-value" not in caplog.text
+    await manager.close()

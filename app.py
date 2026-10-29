@@ -116,6 +116,16 @@ async def reconcile_webhooks(
         )
 
 
+async def reconcile_webhooks_safely(
+    up: UpClient, secrets: WebhookSecretStore, webhook_url: str | None
+) -> None:
+    """reconcile_webhooks, but any failure is logged so callers carry on."""
+    try:
+        await reconcile_webhooks(up, secrets, webhook_url)
+    except Exception as e:
+        logger.error("Webhook reconciliation failed", error=str(e))
+
+
 async def _reconcile(
     up: UpClient, secrets: WebhookSecretStore, webhook_url: str | None
 ) -> None:
@@ -195,7 +205,7 @@ async def _run_startup_tasks(settings: Settings, services: Services) -> None:
     try:
         if settings.admin_token is None:
             logger.warning("ADMIN_TOKEN not set; admin endpoints are open")
-        await reconcile_webhooks(
+        await reconcile_webhooks_safely(
             services.up, services.webhook_secrets, settings.webhook_url
         )
 
@@ -417,7 +427,7 @@ def create_app(
         try:
             logger.info("Manual refresh requested")
 
-            await reconcile_webhooks(
+            await reconcile_webhooks_safely(
                 app.state.services.up,
                 app.state.services.webhook_secrets,
                 app.state.settings.webhook_url,

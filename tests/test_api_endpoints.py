@@ -436,7 +436,27 @@ class TestAPIStartupShutdown:
         with _client(test_settings, up, holder) as c:
             assert c.get("/health").status_code == 200
 
-        assert holder.rebuild_count == 0
+        assert holder.rebuild_count == 1
+
+    def test_secret_store_failure_does_not_skip_index_build_or_refresh(
+        self, test_settings, fake_up, holder
+    ):
+        secrets = InMemoryWebhookSecretStore(errors={"all": RuntimeError("db down")})
+        app = create_app(
+            test_settings, make_services(fake_up, holder=holder, secrets=secrets)
+        )
+        with capture_logs() as logs:
+            with TestClient(app) as c:
+                assert holder.rebuild_count == 1
+                response = c.get("/refresh")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "status": "success",
+            "message": "Data refreshed successfully",
+        }
+        assert holder.rebuild_count == 2
+        assert [e["event"] for e in logs].count("Webhook reconciliation failed") == 2
 
     def test_startup_survives_rebuild_failure(self, test_settings, fake_up):
         failing = FakeIndexHolder(INDEX, rebuild_error=RuntimeError("boom"))
@@ -727,6 +747,23 @@ class TestWebhookSignature:
 
 
 class TestAdminToken:
+    def test_token_with_trailing_newline_still_matches(
+        self, test_settings, fake_up, holder
+    ):
+        settings = Settings(
+            _env_file=None,
+            up_api_token="a",
+            ynab_api_token="b",
+            ynab_budget_id="c",
+            admin_token="tok\n",
+            database_url=test_settings.database_url,
+        )
+        app = create_app(settings, make_services(fake_up, holder=holder))
+        with TestClient(app) as c:
+            right = c.get("/refresh", headers={"Authorization": "Bearer tok"})
+
+        assert right.status_code == 200
+
     def _client(self, test_settings, fake_up, holder, token):
         settings = test_settings.model_copy(update={"admin_token": token})
         return TestClient(create_app(settings, make_services(fake_up, holder=holder)))

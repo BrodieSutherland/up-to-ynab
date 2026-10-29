@@ -262,3 +262,14 @@ class TestSettings:
         )
 
         assert settings.admin_token is None
+
+    def test_admin_token_is_stripped(self):
+        settings = Settings(
+            _env_file=None,
+            up_api_token="a",
+            ynab_api_token="b",
+            ynab_budget_id="c",
+            admin_token="tok\n",
+        )
+
+        assert settings.admin_token == "tok"
