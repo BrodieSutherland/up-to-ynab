@@ -38,7 +38,7 @@ from webhooks import SIGNATURE_HEADER, plan_webhook_changes, signature_valid
 
 logger = structlog.get_logger()
 
-VERSION = "3.0.0"
+VERSION = "3.1.0"
 
 
 class WebhookResponse(BaseModel):
