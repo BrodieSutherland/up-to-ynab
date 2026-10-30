@@ -9,13 +9,13 @@ description = "Sync transactions from Up Bank to YNAB"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi==0.142.2",
+    "fastapi==0.161.1",
     "uvicorn[standard]==0.54.0",
-    "pydantic==2.13.5",
-    "pydantic-settings==2.15.0",
-    "sqlalchemy[asyncio]==2.1.1",
+    "pydantic==2.14.1",
+    "pydantic-settings==2.16.1",
+    "sqlalchemy[asyncio]==2.1.6",
     "aiosqlite==0.22.1",
-    "httpx2==2.13.1",
+    "httpx2==2.16.0",
     "python-dotenv==1.2.4",
     "structlog==26.1.0",
     "alembic==1.20.1",
@@ -25,7 +25,7 @@ dependencies = [
 test = [
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
-    "pytest-mock==3.16.0",
+    "pytest-mock==3.17.0",
     "pytest-cov==7.1.0",
 ]
 
