@@ -27,9 +27,23 @@ class YnabClient(Protocol):
         self, transaction: YnabTransactionDetail
     ) -> Created | AlreadyImported: ...
 
+    async def plan_name(self) -> str | None:
+        """The configured plan's name, or None if it is not in the plan list."""
+        ...
+
     async def list_accounts(self) -> list[YnabAccount]: ...
 
     async def list_transactions(self, since_date: str) -> list[YnabTransaction]: ...
+
+    async def get_transaction(self, ynab_id: str) -> YnabTransaction: ...
+
+    async def update_transaction(
+        self, ynab_id: str, cleared: str, amount: int | None
+    ) -> None: ...
+
+    async def delete_transaction(self, ynab_id: str) -> None: ...
+
+    async def flag_transaction(self, ynab_id: str, flag_color: str = "red") -> None: ...
 
 
 class HttpYnabClient:
@@ -41,6 +55,7 @@ class HttpYnabClient:
         self._http = http
         self._token = token
         self._base_url = base_url.rstrip("/")
+        self._plan_id = plan_id
         self._plan = f"/plans/{plan_id}"
 
     async def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
@@ -86,6 +101,16 @@ class HttpYnabClient:
         except (KeyError, TypeError) as exc:
             raise UpstreamError(f"POST {path} returned unexpected shape") from exc
 
+    async def plan_name(self) -> str | None:
+        body = await self._request("GET", "/plans")
+        try:
+            return next(
+                (p["name"] for p in body["data"]["plans"] if p["id"] == self._plan_id),
+                None,
+            )
+        except (KeyError, TypeError) as exc:
+            raise UpstreamError("GET /plans returned unexpected shape") from exc
+
     async def list_accounts(self) -> list[YnabAccount]:
         path = f"{self._plan}/accounts"
         body = await self._request("GET", path)
@@ -101,3 +126,32 @@ class HttpYnabClient:
             return [YnabTransaction(**item) for item in body["data"]["transactions"]]
         except (ValidationError, KeyError, TypeError) as exc:
             raise UpstreamError(f"GET {path} returned unexpected shape") from exc
+
+    async def get_transaction(self, ynab_id: str) -> YnabTransaction:
+        path = f"{self._plan}/transactions/{ynab_id}"
+        body = await self._request("GET", path)
+        try:
+            return YnabTransaction(**body["data"]["transaction"])
+        except (ValidationError, KeyError, TypeError) as exc:
+            raise UpstreamError(f"GET {path} returned unexpected shape") from exc
+
+    async def update_transaction(
+        self, ynab_id: str, cleared: str, amount: int | None
+    ) -> None:
+        """Set cleared (and amount unless None); the date is never sent."""
+        change: dict[str, Any] = {"id": ynab_id, "cleared": cleared}
+        if amount is not None:
+            change["amount"] = amount
+        await self._patch_transactions(change)
+
+    async def flag_transaction(self, ynab_id: str, flag_color: str = "red") -> None:
+        """Set the flag colour, leaving everything else as it is."""
+        await self._patch_transactions({"id": ynab_id, "flag_color": flag_color})
+
+    async def delete_transaction(self, ynab_id: str) -> None:
+        await self._request("DELETE", f"{self._plan}/transactions/{ynab_id}")
+
+    async def _patch_transactions(self, change: dict[str, Any]) -> None:
+        await self._request(
+            "PATCH", f"{self._plan}/transactions", json={"transactions": [change]}
+        )

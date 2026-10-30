@@ -1,3 +1,4 @@
+from clients.errors import UpstreamError
 from clients.ynab import AlreadyImported, Created
 from models.ynab_models import YnabAccount, YnabTransaction, YnabTransactionDetail
 
@@ -33,11 +34,19 @@ def ynab_transaction(
     transfer_account_id: str | None = None,
     deleted: bool = False,
     subtransactions=(),
+    amount: int = -1000,
+    date: str = "2024-01-01",
+    cleared: str | None = None,
+    import_id: str | None = None,
+    import_payee_name: str | None = None,
 ) -> YnabTransaction:
     return YnabTransaction(
         id=id,
-        date="2024-01-01",
-        amount=-1000,
+        date=date,
+        amount=amount,
+        cleared=cleared,
+        import_id=import_id,
+        import_payee_name=import_payee_name,
         payee_name=payee_name,
         category_id=category_id,
         transfer_account_id=transfer_account_id,
@@ -55,6 +64,7 @@ class FakeYnabClient:
         transactions=(),
         errors: dict[str, Exception] | None = None,
         already_imported: bool = False,
+        plan_name: str | None = "Test Plan",
     ):
         self.accounts: list[YnabAccount] = list(accounts)
         self.transactions: list[YnabTransaction] = list(transactions)
@@ -62,7 +72,12 @@ class FakeYnabClient:
         self.already_imported = already_imported
         self.created: list[YnabTransactionDetail] = []
         self.since_dates: list[str] = []
+        self.updates: list[tuple[str, str, int | None]] = []
         self.list_accounts_calls = 0
+        self._plan_name = plan_name
+        self.plan_name_calls = 0
+        self.deleted_ids: list[str] = []
+        self.flagged: list[tuple[str, str]] = []
 
     def _maybe_raise(self, method: str) -> None:
         if method in self.errors:
@@ -86,3 +101,33 @@ class FakeYnabClient:
         self._maybe_raise("list_transactions")
         self.since_dates.append(since_date)
         return list(self.transactions)
+
+    async def get_transaction(self, ynab_id: str) -> YnabTransaction:
+        self._maybe_raise("get_transaction")
+        for transaction in self.transactions:
+            if transaction.id == ynab_id:
+                return transaction
+        raise UpstreamError("not found", 404)
+
+    async def update_transaction(
+        self, ynab_id: str, cleared: str, amount: int | None
+    ) -> None:
+        self._maybe_raise("update_transaction")
+        self.updates.append((ynab_id, cleared, amount))
+
+    async def delete_transaction(self, ynab_id: str) -> None:
+        self._maybe_raise("delete_transaction")
+        self.deleted_ids.append(ynab_id)
+        self.transactions = [
+            t.model_copy(update={"deleted": True}) if t.id == ynab_id else t
+            for t in self.transactions
+        ]
+
+    async def flag_transaction(self, ynab_id: str, flag_color: str = "red") -> None:
+        self._maybe_raise("flag_transaction")
+        self.flagged.append((ynab_id, flag_color))
+
+    async def plan_name(self) -> str | None:
+        self.plan_name_calls += 1
+        self._maybe_raise("plan_name")
+        return self._plan_name

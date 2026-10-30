@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx2 as httpx
@@ -6,7 +7,7 @@ import pytest
 import structlog
 
 from clients.errors import UpstreamError
-from clients.up import HttpUpClient
+from clients.up import CreatedWebhook, HttpUpClient
 
 FIXTURES = Path(__file__).parent / "fixtures" / "up"
 BASE = "https://api.up.test/api/v1"
@@ -129,6 +130,75 @@ class TestListAccounts:
             await client.list_accounts()
 
 
+def tx_item(id, created_at="2026-10-05T01:00:00+00:00"):
+    return {
+        "type": "transactions",
+        "id": id,
+        "attributes": {
+            "status": "SETTLED",
+            "description": "Test Merchant",
+            "isCategorizable": True,
+            "amount": {
+                "currencyCode": "AUD",
+                "value": "-12.50",
+                "valueInBaseUnits": -1250,
+            },
+            "createdAt": created_at,
+        },
+        "relationships": {"account": {"data": {"type": "accounts", "id": "a-1"}}},
+    }
+
+
+SINCE = datetime(2026, 10, 1, tzinfo=timezone(timedelta(hours=10)))
+
+
+class TestListTransactions:
+    async def test_request_shape_and_parsing(self):
+        body = {"data": [tx_item("t-1"), tx_item("t-2")], "links": {"next": None}}
+        client, requests = make_client(respond(200, body))
+
+        found = await client.list_transactions(SINCE)
+
+        assert [t.id for t in found] == ["t-1", "t-2"]
+        assert len(requests) == 1
+        assert requests[0].url.path == "/api/v1/transactions"
+        assert requests[0].url.params["filter[since]"] == "2026-10-01T00:00:00+10:00"
+        assert requests[0].url.params["page[size]"] == "100"
+
+    async def test_follows_next_links(self):
+        page2_url = f"{BASE}/transactions?page[after]=abc"
+        pages = {
+            None: {"data": [tx_item("t-1")], "links": {"next": page2_url}},
+            "abc": {"data": [tx_item("t-2")], "links": {"next": None}},
+        }
+
+        def handler(request):
+            after = request.url.params.get("page[after]")
+            return httpx.Response(200, json=pages[after])
+
+        client, requests = make_client(handler)
+
+        found = await client.list_transactions(SINCE)
+
+        assert [t.id for t in found] == ["t-1", "t-2"]
+        assert len(requests) == 2
+
+    async def test_bad_transaction_raises(self):
+        body = {"data": [{"id": "t-1"}], "links": {"next": None}}
+        client, _ = make_client(respond(200, body))
+
+        with pytest.raises(UpstreamError, match="unexpected shape"):
+            await client.list_transactions(SINCE)
+
+    async def test_server_error_raises_with_status(self):
+        client, _ = make_client(respond(500, {}))
+
+        with pytest.raises(UpstreamError) as exc:
+            await client.list_transactions(SINCE)
+
+        assert exc.value.status_code == 500
+
+
 class TestWebhooks:
     async def test_list_webhooks_parses(self):
         body = {
@@ -155,12 +225,21 @@ class TestWebhooks:
             ("w2", "https://b.test/hook", None),
         ]
 
-    async def test_create_webhook_posts_and_returns_id(self):
+    async def test_create_webhook_posts_and_returns_id_and_secret(self):
         client, requests = make_client(
-            respond(201, {"data": {"type": "webhooks", "id": "w9"}})
+            respond(
+                201,
+                {
+                    "data": {
+                        "type": "webhooks",
+                        "id": "w9",
+                        "attributes": {"secretKey": "sk-9"},
+                    }
+                },
+            )
         )
 
-        webhook_id = await client.create_webhook("https://a.test/hook")
+        created = await client.create_webhook("https://a.test/hook")
 
         [request] = requests
         assert request.method == "POST"
@@ -173,7 +252,16 @@ class TestWebhooks:
                 }
             }
         }
-        assert webhook_id == "w9"
+        assert created == CreatedWebhook("w9", "sk-9")
+        assert "sk-9" not in repr(created)
+
+    async def test_create_webhook_without_secret_raises(self):
+        client, _ = make_client(
+            respond(201, {"data": {"type": "webhooks", "id": "w9"}})
+        )
+
+        with pytest.raises(UpstreamError, match="unexpected shape"):
+            await client.create_webhook("https://a.test/hook")
 
     async def test_create_webhook_failure_raises(self):
         client, _ = make_client(respond(401))

@@ -35,9 +35,9 @@ def test_settings() -> Settings:
 async def database(
     test_settings: Settings,
 ) -> AsyncGenerator[DatabaseManager, None]:
-    """In-memory database with tables created."""
+    """In-memory database migrated to head."""
     manager = DatabaseManager(test_settings.database_url)
-    await manager.create_tables()
+    await manager.migrate()
     yield manager
     await manager.close()
 

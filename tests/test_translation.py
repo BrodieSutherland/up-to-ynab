@@ -7,9 +7,12 @@ from forwarding.budget_index import (
     BudgetIndex,
     NotInYnab,
     YnabAccountRef,
+    build_budget_index,
 )
 from forwarding.translation import Skip, cleared_status, translate
 from models.up_models import UpTransaction
+from tests.fakes.up import up_accounts_fixture
+from tests.fakes.ynab import ynab_account, ynab_transaction
 
 FIXTURES = Path(__file__).parent / "fixtures" / "up" / "transactions"
 SP = YnabAccountRef("ynab-spending", "tp-spending")
@@ -22,15 +25,24 @@ SP_ONLY = BudgetIndex({"accounts-1": SP, "accounts-4": NotInYnab()})
 SP_ONLY_UNKNOWN = BudgetIndex({"accounts-1": SP})
 INDEX = BudgetIndex({"accounts-1": SP})
 MATCHED = BudgetIndex({"accounts-1": SP}, {"Payee 1": "cat-1"})
-MIRROR = Skip("Mirror side of a Transfer")
-NOT_IN_YNAB = Skip("Up account not in YNAB")
+MIRROR = Skip("Mirror side of a Transfer", "mirror_side")
+NOT_IN_YNAB = Skip("Up account not in YNAB", "account_not_in_ynab")
 
 
 def load(name):
     return UpTransaction(**json.loads((FIXTURES / f"{name}.json").read_text())["data"])
 
 
-def ordinary(account_id, payee_name, memo, amount, date, category_id, import_id="x"):
+def ordinary(
+    account_id,
+    payee_name,
+    memo,
+    amount,
+    date,
+    category_id,
+    import_id="x",
+    cleared="cleared",
+):
     return {
         "account_id": account_id,
         "payee_id": None,
@@ -39,14 +51,14 @@ def ordinary(account_id, payee_name, memo, amount, date, category_id, import_id=
         "memo": memo,
         "amount": amount,
         "date": date,
-        "cleared": "uncleared",
+        "cleared": cleared,
         "approved": True,
         "flag_color": None,
         "import_id": import_id,
     }
 
 
-def transfer(account_id, payee_id, amount, date, import_id):
+def transfer(account_id, payee_id, amount, date, import_id, cleared="cleared"):
     return {
         "account_id": account_id,
         "payee_id": payee_id,
@@ -55,7 +67,7 @@ def transfer(account_id, payee_id, amount, date, import_id):
         "memo": None,
         "amount": amount,
         "date": date,
-        "cleared": "uncleared",
+        "cleared": cleared,
         "approved": True,
         "flag_color": None,
         "import_id": import_id,
@@ -269,6 +281,7 @@ XFER_ORIG = transfer(
                 "2026-10-17",
                 None,
                 "transactions-5",
+                "uncleared",
             ),
             id="row15-held",
         ),
@@ -336,9 +349,11 @@ def test_parity_field_rules(name, index, want):
     assert (result if isinstance(result, Skip) else result.model_dump()) == want
 
 
-@pytest.mark.parametrize("name", ["held_1", "purchase_plain_1"])
-def test_cleared_is_uncleared_for_held_and_settled(name):
-    assert cleared_status(load(name)) == "uncleared"
+@pytest.mark.parametrize(
+    "name, want", [("held_1", "uncleared"), ("purchase_plain_1", "cleared")]
+)
+def test_cleared_follows_up_status(name, want):
+    assert cleared_status(load(name)) == want
 
 
 def test_account_not_in_ynab_is_skipped():
@@ -346,12 +361,12 @@ def test_account_not_in_ynab_is_skipped():
         load("purchase_plain_1"), BudgetIndex({"accounts-1": NotInYnab()})
     )
 
-    assert result == Skip("Up account not in YNAB")
+    assert result == Skip("Up account not in YNAB", "account_not_in_ynab")
 
 
 def test_unknown_account_is_skipped():
     assert translate(load("purchase_plain_1"), BudgetIndex({})) == Skip(
-        "Up account not in YNAB"
+        "Up account not in YNAB", "account_not_in_ynab"
     )
 
 
@@ -359,3 +374,30 @@ def test_uses_matched_ynab_account_id():
     index = BudgetIndex({"accounts-1": YnabAccountRef("other-acct", "tp-9")})
 
     assert translate(load("purchase_plain_1"), index).account_id == "other-acct"
+
+
+def test_category_match_uses_import_payee_name_of_renamed_payee():
+    index = build_budget_index(
+        up_accounts_fixture(),
+        [ynab_account("y1", "Spending")],
+        [
+            ynab_transaction(
+                "t1", "Renamed Payee", "cat-renamed", import_payee_name="Payee 1"
+            )
+        ],
+    )
+
+    result = translate(load("purchase_plain_1"), index)
+
+    assert result.payee_name == "Payee 1"
+    assert result.category_id == "cat-renamed"
+    assert result.account_id == "y1"
+
+
+def test_transfers_off_makes_a_mirror_side_ordinary():
+    mirror = load("transfer_mirror_1")
+
+    assert translate(mirror, ALL) == MIRROR
+    result = translate(mirror, ALL, transfers=False)
+    assert result.payee_id is None
+    assert result.payee_name == mirror.payee

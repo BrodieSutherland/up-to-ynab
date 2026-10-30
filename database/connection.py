@@ -8,9 +8,18 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from .models import Base
+from .migrate import upgrade_to_head
 
 SessionFactory = Callable[[], AbstractAsyncContextManager[AsyncSession]]
+
+
+def _is_memory_sqlite(database_url: str) -> bool:
+    """True for SQLite URLs with no file behind them (`:memory:` or empty path)."""
+    if "sqlite" not in database_url:
+        return False
+    path = database_url.split("///", 1)[1] if "///" in database_url else ""
+    path = path.split("?", 1)[0]
+    return path in ("", ":memory:") or "mode=memory" in database_url
 
 
 class DatabaseManager:
@@ -18,14 +27,16 @@ class DatabaseManager:
 
     def __init__(self, database_url: str, echo: bool = False):
         self.database_url = database_url
+        # One shared connection is only needed so an in-memory SQLite database
+        # survives between sessions; file databases use the default pool.
+        memory = _is_memory_sqlite(database_url)
         self.engine = create_async_engine(
             database_url,
-            # SQLite specific settings
-            poolclass=(StaticPool if "sqlite" in database_url else None),
-            connect_args=(
-                {"check_same_thread": False} if "sqlite" in database_url else {}
-            ),
+            poolclass=StaticPool if memory else None,
+            connect_args={"check_same_thread": False} if memory else {},
             echo=echo,
+            # Bound values include webhook secrets; never let echo print them.
+            hide_parameters=True,
         )
         self.async_session = async_sessionmaker(
             self.engine,
@@ -33,10 +44,10 @@ class DatabaseManager:
             expire_on_commit=False,
         )
 
-    async def create_tables(self) -> None:
-        """Create all database tables."""
+    async def migrate(self) -> None:
+        """Bring the schema up to the latest revision."""
         async with self.engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(upgrade_to_head)
 
     @asynccontextmanager
     async def get_session(self) -> AsyncGenerator[AsyncSession, None]:

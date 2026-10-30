@@ -56,6 +56,9 @@ class BudgetIndex:
         found = self.accounts.get(up_account_id)
         return found if found is not None else UnknownUpAccount()
 
+    def matched_count(self) -> int:
+        return sum(isinstance(a, YnabAccountRef) for a in self.accounts.values())
+
     def category_match(self, payee: str) -> str | None:
         return self.category_by_payee.get(payee)
 
@@ -99,10 +102,14 @@ def build_budget_index(
 
 
 def _category_by_payee(transactions: Iterable[YnabTransaction]) -> dict[str, str]:
-    """Payees whose counted transactions all share exactly one category.
+    """Names whose counted transactions all share exactly one category.
 
-    Deleted transactions, transfers, splits and uncategorised or payee-less
-    transactions are not counted. Payee names match exactly.
+    Each transaction is keyed by its YNAB payee name and, when recorded, its
+    import payee name (the name before YNAB rename rules, i.e. the Up
+    description this app sent). A key seen with two categories, from either
+    source, has no match. Deleted transactions, transfers, splits and
+    uncategorised or payee-less transactions are not counted. Names match
+    exactly.
     """
     seen: dict[str, set[str]] = {}
     for t in transactions:
@@ -114,7 +121,11 @@ def _category_by_payee(transactions: Iterable[YnabTransaction]) -> dict[str, str
             or t.payee_name is None
         ):
             continue
-        seen.setdefault(t.payee_name, set()).add(t.category_id)
+        keys = [t.payee_name]
+        if t.import_payee_name:
+            keys.append(t.import_payee_name)
+        for key in keys:
+            seen.setdefault(key, set()).add(t.category_id)
     return {payee: next(iter(c)) for payee, c in seen.items() if len(c) == 1}
 
 
@@ -143,9 +154,15 @@ class BudgetIndexHolder:
         logger.info(
             "Budget Index rebuilt",
             up_accounts=len(up_accounts),
-            matched=sum(isinstance(a, YnabAccountRef) for a in index.accounts.values()),
+            matched=index.matched_count(),
             categorised_payees=len(index.category_by_payee),
         )
+        if index.matched_count() == 0:
+            logger.warning(
+                "No Up account matched a YNAB account",
+                up_accounts=len(up_accounts),
+                hint="YNAB account names must equal Up account names exactly",
+            )
 
     async def current_for(self, up_account_id: str) -> BudgetIndex:
         """The index, rebuilt lazily (at most once a minute) for an unknown account."""
