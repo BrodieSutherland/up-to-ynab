@@ -3,7 +3,7 @@
 # deps: resolve wheels for the *target* architecture on the *build* host, so
 # multi-arch builds never run pip under QEMU. Wheels only: a dependency without
 # cp314 manylinux wheels for both amd64 and arm64 fails the build.
-FROM --platform=$BUILDPLATFORM python:3.14-slim AS deps
+FROM --platform=$BUILDPLATFORM python:3.15-slim AS deps
 ARG TARGETARCH
 WORKDIR /build
 COPY requirements.txt .
@@ -24,7 +24,7 @@ RUN case "$TARGETARCH" in \
         -r requirements.txt
 
 # base: shared runtime layer (non-root user, dependencies, healthcheck)
-FROM python:3.14-slim AS base
+FROM python:3.15-slim AS base
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app:/deps \
